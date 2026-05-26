@@ -4,6 +4,8 @@
 // @version      5.5
 // @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI
 // @author       Allison de Castro Silva
+// @updateURL    https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
+// @downloadURL  https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
 // @match        https://eproc1g.tjmg.jus.br/eproc/controlador.php?acao=automatizar_localizadores*
 // @icon         https://eproc1g.tjmg.jus.br/imagens/icons/favicons/favicon.ico
 // @grant        GM_xmlhttpRequest
