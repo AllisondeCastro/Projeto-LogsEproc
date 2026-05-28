@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto LogsEproc v5.0
 // @namespace    https://eproc1g.tjmg.jus.br
-// @version      5.5
+// @version      5.6
 // @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI
 // @author       Allison de Castro Silva
 // @updateURL    https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
@@ -1953,7 +1953,9 @@
             });
         }
         var grupoSelect = document.getElementById('eproc-filtro-grupo');
-        var gruposArr = Array.from(grupos).sort();
+        var gruposArr = Array.from(grupos).sort(function(a, b) {
+           return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
         grupoSelect.innerHTML = '<option value="todos">Todos</option>' +
             gruposArr.map(function (g) { return '<option value="' + escHTML(g) + '">' + escHTML(g) + '</option>'; }).join('');
 
@@ -2076,7 +2078,9 @@
         // Atualiza Grupos
         var grupoSelect = document.getElementById('eproc-filtro-grupo');
         var valGrupoAnterior = grupoSelect.value;
-        var gruposArr = Array.from(grupos).sort();
+        var gruposArr = Array.from(grupos).sort(function(a, b) {
+            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+        });
 
         var grupoHtml = '<option value="todos">Todos (' + gruposArr.length + ')</option>';
         gruposArr.forEach(function (g) {
