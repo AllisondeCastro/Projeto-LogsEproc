@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Projeto LogsEproc v5.0
+// @name         Projeto LogsEproc
 // @namespace    https://eproc1g.tjmg.jus.br
-// @version      5.7
-// @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI (Upsert escalavel, multi-pagina)
+// @version      5.8
+// @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI
 // @author       Allison de Castro Silva
 // @updateURL    https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
 // @downloadURL  https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
@@ -12,9 +12,6 @@
 // @grant        GM_notification
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @connect      script.google.com
-// @connect      script.googleusercontent.com
-// @connect      googleusercontent.com
 // @connect      *
 // ==/UserScript==
 
@@ -3214,7 +3211,9 @@
 
         // Ordena por ordem cronológica crescente (antigo -> recente)
         var processosOrdenados = processos.slice().sort(function (a, b) {
-            return parseDataBR(a.dataCompleta).getTime() - parseDataBR(b.dataCompleta).getTime();
+            var horaA = a.hora || '';
+            var horaB = b.hora || '';
+            return parseDataBR(a.dataCompleta + ' ' + horaA).getTime() - parseDataBR(b.dataCompleta + ' ' + horaB).getTime();
         });
 
         body.innerHTML = processosOrdenados.map(function (p) {
@@ -3256,7 +3255,9 @@
         var dadosOrdenados = dados.slice().sort(function (a, b) {
             var da = a[2] || a.dataOnly || a.data || '';
             var db = b[2] || b.dataOnly || b.data || '';
-            return parseDataBR(da).getTime() - parseDataBR(db).getTime();
+            var ha = a[3] || a.hora || '';
+            var hb = b[3] || b.hora || '';
+            return parseDataBR(da + ' ' + ha).getTime() - parseDataBR(db + ' ' + hb).getTime();
         });
 
         body.innerHTML = dadosOrdenados.map(function (l) {
@@ -3473,9 +3474,9 @@
         }
 
         banner.innerHTML =
-            '<span style="font-size:18px;">⚠️</span>' +
+            '<span style="font-size:20px;">⚠️</span>' +
             '<span>Por favor, para garantir o correto funcionamento do sistema de estatísticas de Logs, ' +
-            'altere a paginação para <u>1000 Regras</u> e atualize a página.' +
+            'altere a paginação para <u>1000 Regras</u>.' +
             ' (Atual: <strong>' + (valorAtual || 'desconhecido') + '</strong>)</span>' +
             '<button id="eproc-paginacao-alerta-fechar" style="' +
             'background:rgba(255,255,255,0.25); border:none; color:#fff; font-size:16px; ' +
