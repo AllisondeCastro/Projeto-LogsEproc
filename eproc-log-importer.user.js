@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Projeto LogsEproc v5.0
 // @namespace    https://eproc1g.tjmg.jus.br
-// @version      5.6
-// @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI
+// @version      5.7
+// @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI (Upsert escalavel, multi-pagina)
 // @author       Allison de Castro Silva
 // @updateURL    https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
 // @downloadURL  https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
@@ -1424,23 +1424,25 @@
         if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) {
             throw new Error('Supabase nao configurado');
         }
-        adicionarLog('Enviando ' + logs.length + ' registros ao Supabase...', 'info');
+
+        adicionarLog('Sincronizando ' + logs.length + ' registros...', 'info');
         var payload = logsToSupabase(logs);
+
         try {
-            await supabaseRest('/rest/v1/logs', {
+            // ?on_conflict=id instrui o PostgREST a comparar pelo ID (Upsert)
+            // noMerge: false ativa o header 'Prefer: resolution=merge-duplicates'
+            // Isso elimina erros 409 e garante que duplicados sejam ignorados/atualizados pelo banco
+            await supabaseRest('/rest/v1/logs?on_conflict=id', {
                 method: 'POST',
                 data: payload,
-                noMerge: true,
+                noMerge: false,
                 timeout: 60000
             });
-            adicionarLog('Supabase OK: +' + logs.length + ' registros', 'success');
+
+            adicionarLog('Sucesso: Batch de ' + logs.length + ' processado (Upsert).', 'success');
             return { novos: logs.length, ignorados: 0 };
         } catch (e) {
-            var msg = (e.message || '').toLowerCase();
-            if (msg.indexOf('409') !== -1 || msg.indexOf('duplicate') !== -1 || msg.indexOf('violates') !== -1) {
-                adicionarLog('Supabase: ' + logs.length + ' registros ja existiam (ignorados)', 'warn');
-                return { novos: 0, ignorados: logs.length };
-            }
+            adicionarLog('Erro na sincronizacao: ' + e.message, 'error');
             throw e;
         }
     }
@@ -1690,6 +1692,136 @@
     }
 
     // ================================================================
+    // EXTRACAO MULTI-PAGINA DE REGRAS
+    // Busca todas as regras independentemente da paginação atual da tabela
+    // ================================================================
+    async function extrairTodasRegras() {
+        // Primeiro tenta extrair da página atual
+        var regrasLocais = extrairRegras();
+
+        // Detecta o total de regras via info de paginação do DataTables (EPROC)
+        var totalInfo = document.getElementById('tableAutomatizacaoLocalizadores_info');
+        var totalRegras = 0;
+        if (totalInfo) {
+            var infoText = totalInfo.textContent || '';
+            var mTotal = infoText.match(/(\d[\d.]*) (registro|entr|result)/i);
+            if (mTotal) totalRegras = parseInt(mTotal[1].replace(/\./g, ''));
+        }
+
+        // Se não encontrou info de total, ou já temos todas as regras, retorna o que extraiu
+        if (totalRegras <= regrasLocais.length || totalRegras === 0) {
+            adicionarLog('Regras locais: ' + regrasLocais.length + ' (pagina atual)', 'info');
+            return regrasLocais;
+        }
+
+        adicionarLog('Total de regras detectado: ' + totalRegras + ' | Pagina atual: ' + regrasLocais.length + '. Buscando demais paginas...', 'warn');
+
+        // Monta a URL base da página atual para buscar outras páginas via POST (DataTables AJAX)
+        var todasRegras = regrasLocais.slice();
+        var urlAtual = window.location.href;
+        var paginaSize = regrasLocais.length || 50;
+        var start = paginaSize;
+
+        // Tenta buscar páginas adicionais via DataTables (EPROC usa DataTables com server-side)
+        while (todasRegras.length < totalRegras) {
+            try {
+                adicionarLog('Buscando pagina adicional (start=' + start + ')...', 'info');
+                var fd = new URLSearchParams();
+                fd.set('acao', 'automatizar_localizadores');
+                fd.set('tableAutomatizacaoLocalizadores_length', String(paginaSize));
+                fd.set('start', String(start));
+
+                var r = await fetch(urlAtual, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: fd.toString()
+                });
+                var html = await r.text();
+
+                // Injeta o HTML em um iframe temporário para parsear com jQuery
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(html, 'text/html');
+                var tbody = doc.querySelector('#tableAutomatizacaoLocalizadores tbody');
+                if (!tbody || !tbody.querySelectorAll('tr').length) break;
+
+                // Extrai regras do HTML parseado usando a mesma lógica de extrairRegras
+                var regrasExtra = extrairRegrasDeDOM(doc);
+                if (regrasExtra.length === 0) break;
+
+                todasRegras = todasRegras.concat(regrasExtra);
+                start += regrasExtra.length;
+                adicionarLog('Pagina adicional: +' + regrasExtra.length + ' regras (total=' + todasRegras.length + ')', 'info');
+
+                if (regrasExtra.length < paginaSize) break;
+            } catch (e) {
+                adicionarLog('Erro ao buscar pagina adicional: ' + e.message + '. Prosseguindo com ' + todasRegras.length + ' regras.', 'warn');
+                break;
+            }
+        }
+
+        adicionarLog('Total de regras coletadas: ' + todasRegras.length, 'success');
+        return todasRegras;
+    }
+
+    // Versão de extrairRegras que opera sobre um Document externo (para multi-página)
+    function extrairRegrasDeDOM(doc) {
+        var regras = [];
+        var colMap = { regra: 1, grupo: 2, origem: 3, controle: 4, destino: 5, outros: 6, acoes: 7 };
+        var thead = doc.querySelectorAll('#tableAutomatizacaoLocalizadores thead th');
+        thead.forEach(function (th, idx) {
+            var txt = (th.textContent || '').toLowerCase().trim();
+            if (txt.indexOf('nº') !== -1 || txt.indexOf('prioridade') !== -1 || txt.indexOf('regra') !== -1) colMap.regra = idx;
+            else if (txt.indexOf('grupo') !== -1) colMap.grupo = idx;
+            else if (txt.indexOf('origem') !== -1) colMap.origem = idx;
+            else if (txt.indexOf('destino') !== -1 || txt.indexOf('ação') !== -1 || txt.indexOf('acao') !== -1) colMap.destino = idx;
+            else if (txt.indexOf('outros') !== -1) colMap.outros = idx;
+            else if (txt.indexOf('controle') !== -1 || txt.indexOf('critério') !== -1 || txt.indexOf('criterio') !== -1) colMap.controle = idx;
+            else if (txt.indexOf('ações') !== -1 || txt.indexOf('acoes') !== -1) colMap.acoes = idx;
+        });
+        var rows = doc.querySelectorAll('#tableAutomatizacaoLocalizadores tbody tr');
+        rows.forEach(function (tr) {
+            var tds = tr.querySelectorAll('td');
+            if (tds.length < 5) return;
+            var getTd = function (key) { return tds[colMap[key]] || tds[0]; };
+            var tdRegra = getTd('regra');
+            var spanRegra = tdRegra.querySelector('span[style*="underline"]');
+            var numRegra = spanRegra ? spanRegra.textContent.trim() : tdRegra.textContent.trim();
+            var tdAcoes = getTd('acoes');
+            var links = tdAcoes.querySelectorAll('a');
+            var lk = null;
+            links.forEach(function (a) {
+                var href = a.getAttribute('href') || '';
+                if (href.indexOf('log_por_regra') !== -1) lk = a;
+            });
+            if (!lk) {
+                tr.querySelectorAll('a').forEach(function (a) {
+                    var href = a.getAttribute('href') || '';
+                    if (href.indexOf('log_por_regra') !== -1) lk = a;
+                });
+            }
+            var href = lk ? lk.getAttribute('href') : null;
+            if (!href || !numRegra) return;
+            var tdGrupo = getTd('grupo');
+            var grupoClone = tdGrupo.cloneNode(true);
+            grupoClone.querySelectorAll('select, option, a, button').forEach(function (el) { el.parentNode.removeChild(el); });
+            var grupoRaw = (grupoClone.textContent || '').replace(/==.*?==/g, '').replace(/\[\+\]/g, '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+            var cod = href.match(/cod_controle_localizador_sistema=(\d+)/);
+            regras.push({
+                numRegra: numRegra,
+                grupo: grupoRaw || 'Não Classificado',
+                origem: getTd('origem').textContent.trim(),
+                controle: getTd('controle').textContent.trim(),
+                destino: getTd('destino').textContent.trim(),
+                outros: getTd('outros').textContent.trim(),
+                codRegra: cod ? cod[1] : '',
+                urlLog: href.indexOf('http') === 0 ? href : 'https://eproc1g.tjmg.jus.br/eproc/' + href
+            });
+        });
+        return regras;
+    }
+
+    // ================================================================
     // IMPORTACAO (existing, adapted)
     // ================================================================
     async function iniciarImportacao() {
@@ -1702,7 +1834,10 @@
         }
         adicionarLog('=== INICIANDO IMPORTACAO ===', 'success');
         if (!CONFIG.supabaseUrl || !CONFIG.supabaseKey) { adicionarLog('Configure o Supabase!', 'error'); state.processando = false; state.silentMode = false; if (!state.silentMode) { btn.textContent = '▶ Importar Logs'; btn.className = 'primary'; } return; }
-        var regras = extrairRegras();
+
+        // Extrai TODAS as regras (multi-página automático)
+        adicionarLog('Buscando todas as regras (multi-pagina)...', 'info');
+        var regras = await extrairTodasRegras();
         if (regras.length === 0) { adicionarLog('Nenhuma regra!', 'error'); state.processando = false; state.silentMode = false; if (!state.silentMode) { btn.textContent = '▶ Importar Logs'; btn.className = 'primary'; } return; }
         state.stats.regrasTotal = regras.length;
         state.stats.regrasProcessadas = 0;
@@ -1710,21 +1845,12 @@
         state.stats.inicio = Date.now(); state.stats.temposRegra = []; state.stats.porRegra = {};
         state.regrasPendentes = regras.slice();
         state.idsEnviados = new Set();
-        state.idsExistentesPlanilha = new Set();
+        // OTIMIZACAO DE MEMORIA: Removido carregamento de IDs existentes do Supabase.
+        // O banco de dados agora e o porteiro final via Primary Key (Upsert on_conflict=id).
+        // Isso elimina o crescimento de RAM proporcional ao volume do banco.
         state.logsBuffer = [];
         if (!state.silentMode) atualizarUI();
-        adicionarLog(regras.length + ' regras encontradas', 'info');
-
-        // Carrega IDs existentes do Supabase para filtrar antes de enviar
-        try {
-            var idsResult = await supabaseGet('logs', 'select=id');
-            if (idsResult && idsResult.length) {
-                state.idsExistentesPlanilha = new Set(idsResult.map(function (r) { return r.id; }));
-            }
-            adicionarLog('Supabase: ' + state.idsExistentesPlanilha.size + ' registros existentes', 'info');
-        } catch (e) {
-            adicionarLog('Nao foi possivel carregar IDs existentes: ' + e.message, 'warn');
-        }
+        adicionarLog(regras.length + ' regras encontradas (todas as paginas)', 'info');
 
         try { await syncAutomatizacoes(regras); }
         catch (e) { adicionarLog('Erro sync regras: ' + e.message, 'error'); }
@@ -1741,7 +1867,9 @@
                 for (var li = 0; li < logs.length; li++) {
                     var log = logs[li];
                     var id = await md5(log.processo + '|' + log.data + '|' + log.regra);
-                    if (!state.idsEnviados.has(id) && !state.idsExistentesPlanilha.has(id)) {
+                    // Apenas verifica duplicados na sessão atual (RAM constante)
+                    // Duplicados do banco são tratados pelo Upsert (on_conflict=id)
+                    if (!state.idsEnviados.has(id)) {
                         log.id = id; state.logsBuffer.push(log); state.idsEnviados.add(id);
                     }
                 }
@@ -1953,9 +2081,7 @@
             });
         }
         var grupoSelect = document.getElementById('eproc-filtro-grupo');
-        var gruposArr = Array.from(grupos).sort(function(a, b) {
-           return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
+        var gruposArr = Array.from(grupos).sort();
         grupoSelect.innerHTML = '<option value="todos">Todos</option>' +
             gruposArr.map(function (g) { return '<option value="' + escHTML(g) + '">' + escHTML(g) + '</option>'; }).join('');
 
@@ -2078,9 +2204,7 @@
         // Atualiza Grupos
         var grupoSelect = document.getElementById('eproc-filtro-grupo');
         var valGrupoAnterior = grupoSelect.value;
-        var gruposArr = Array.from(grupos).sort(function(a, b) {
-            return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
-        });
+        var gruposArr = Array.from(grupos).sort();
 
         var grupoHtml = '<option value="todos">Todos (' + gruposArr.length + ')</option>';
         gruposArr.forEach(function (g) {
@@ -3298,6 +3422,83 @@
     }
 
     // ================================================================
+    // ALERTA DE PAGINACAO INSUFICIENTE
+    // Exibe um banner verde caso a paginacao da tabela nao seja 1000
+    // ================================================================
+    function verificarPaginacao() {
+        // Tenta ler o seletor de itens por pagina do DataTables (EPROC)
+        var sel = document.querySelector('#tableAutomatizacaoLocalizadores_length select') ||
+                  document.querySelector('select[name="tableAutomatizacaoLocalizadores_length"]') ||
+                  document.querySelector('.dataTables_length select');
+
+        var valorAtual = sel ? parseInt(sel.value, 10) : null;
+
+        // Se ja esta em 1000 ou nao conseguiu detectar, nao exibe nada
+        if (!sel || valorAtual === 1000) return;
+
+        // Verifica se o banner ja existe para nao duplicar
+        if (document.getElementById('eproc-paginacao-alerta')) return;
+
+        var banner = document.createElement('div');
+        banner.id = 'eproc-paginacao-alerta';
+        banner.style.cssText = [
+            'position: fixed',
+            'bottom: 24px',
+            'left: 50%',
+            'transform: translateX(-50%)',
+            'z-index: 9999999',
+            'background: linear-gradient(135deg, #16a34a, #22c55e)',
+            'color: #ffffff',
+            'font-weight: bold',
+            'font-family: Inter, -apple-system, sans-serif',
+            'font-size: 13px',
+            'padding: 14px 28px',
+            'border-radius: 12px',
+            'box-shadow: 0 4px 24px rgba(22, 163, 74, 0.45)',
+            'border: 1px solid rgba(255,255,255,0.2)',
+            'display: flex',
+            'align-items: center',
+            'gap: 12px',
+            'max-width: 90vw',
+            'text-align: center',
+            'animation: eproc-slide-up 0.4s cubic-bezier(0.34,1.56,0.64,1) both'
+        ].join('; ');
+
+        // Injeta animacao de entrada
+        if (!document.getElementById('eproc-paginacao-alerta-css')) {
+            var styleEl = document.createElement('style');
+            styleEl.id = 'eproc-paginacao-alerta-css';
+            styleEl.textContent = '@keyframes eproc-slide-up { from { opacity:0; transform:translateX(-50%) translateY(20px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }';
+            document.head.appendChild(styleEl);
+        }
+
+        banner.innerHTML =
+            '<span style="font-size:20px;">⚠️</span>' +
+            '<span>Por favor, para garantir o correto funcionamento do sistema de estatísticas de Logs, ' +
+            'altere a paginação para <u>1000 Regras</u>.' +
+            ' (Atual: <strong>' + (valorAtual || 'desconhecido') + '</strong>)</span>' +
+            '<button id="eproc-paginacao-alerta-fechar" style="' +
+            'background:rgba(255,255,255,0.25); border:none; color:#fff; font-size:16px; ' +
+            'cursor:pointer; border-radius:6px; padding:2px 8px; margin-left:6px; line-height:1; font-weight:bold;' +
+            '" title="Fechar">✕</button>';
+
+        document.body.appendChild(banner);
+
+        document.getElementById('eproc-paginacao-alerta-fechar').onclick = function () {
+            var b = document.getElementById('eproc-paginacao-alerta');
+            if (b) {
+                b.style.animation = 'none';
+                b.style.opacity = '0';
+                b.style.transform = 'translateX(-50%) translateY(20px)';
+                b.style.transition = 'opacity 0.3s, transform 0.3s';
+                setTimeout(function () { if (b.parentNode) b.parentNode.removeChild(b); }, 350);
+            }
+        };
+
+        adicionarLog('AVISO: Paginacao atual (' + valorAtual + ') menor que 1000. Altere para garantir extracao completa.', 'warn');
+    }
+
+    // ================================================================
     // INIT
     // ================================================================
     state.darkMode = String(GM_getValue('darkMode', 'false')) === 'true';
@@ -3311,6 +3512,10 @@
 
     aguardarJQuery(async function () {
         criarUI();
+
+        // Verifica paginacao e exibe alerta se necessario
+        verificarPaginacao();
+
         var n = extrairRegras().length;
         adicionarLog(n + ' regras encontradas na pagina', 'info');
 
