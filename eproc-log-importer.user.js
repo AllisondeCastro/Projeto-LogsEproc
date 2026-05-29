@@ -3473,9 +3473,9 @@
         }
 
         banner.innerHTML =
-            '<span style="font-size:20px;">⚠️</span>' +
+            '<span style="font-size:18px;">⚠️</span>' +
             '<span>Por favor, para garantir o correto funcionamento do sistema de estatísticas de Logs, ' +
-            'altere a paginação para <u>1000 Regras</u>.' +
+            'altere a paginação para <u>1000 Regras</u> e atualize a página.' +
             ' (Atual: <strong>' + (valorAtual || 'desconhecido') + '</strong>)</span>' +
             '<button id="eproc-paginacao-alerta-fechar" style="' +
             'background:rgba(255,255,255,0.25); border:none; color:#fff; font-size:16px; ' +
