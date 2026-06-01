@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto LogsEproc
 // @namespace    https://eproc1g.tjmg.jus.br
-// @version      5.8
+// @version      6.0
 // @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI
 // @author       Allison de Castro Silva
 // @updateURL    https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
@@ -188,7 +188,6 @@
 
     // Detecção de Perfil
     function detectarPerfilUsuario() {
-        var defaultPerfil = 'NUCIV 4.0';
         try {
             var sel = document.getElementById('selLotacao') || document.querySelector('select[name="selLotacao"]');
             if (sel && sel.selectedIndex >= 0) {
@@ -202,7 +201,7 @@
                 return txt.trim();
             }
         } catch (e) { }
-        return defaultPerfil;
+        return null;
     }
 
     var PERFIL_ATUAL = detectarPerfilUsuario();
@@ -243,11 +242,11 @@
         logsBuffer: [],
         stats: {
             regrasTotal: 0, regrasProcessadas: 0,
-            logsExtraidos: 0, logsNovos: 0, logsIgnorados: 0, erros: 0, errosFetch: 0, errosFlush: 0,
+            logsExtraidos: 0, logsNovos: 0, logsIgnorados: 0, logsDuplicados: 0, erros: 0, errosFetch: 0, errosFlush: 0,
             inicio: 0, temposRegra: [], porRegra: {}
         },
         regrasPendentes: [],
-        ultimaExtracao: GM_getValue('ultimaExtracao', null),
+        ultimaExtracao: PERFIL_ATUAL ? GM_getValue('ultimaExtracao_' + PERFIL_ATUAL, null) : null,
         retryBatch: { contador: 0, dados: null },
         // Dashboard state
         dadosBrutos: null,
@@ -364,7 +363,10 @@
 
     function adicionarLog(msg, tipo) {
         var list = document.getElementById('eproc-log-list');
-        if (!list) return;
+        if (!list) {
+            if (typeof console !== 'undefined' && console.log) console.log('§ LOG: [' + agora() + '] ' + msg);
+            return;
+        }
         var div = document.createElement('div');
         div.className = 'log-entry' + (tipo ? ' ' + tipo : '');
         div.textContent = '[' + agora() + '] ' + msg;
@@ -509,7 +511,7 @@
         '#eproc-dashboard .tab-bar .tab-btn .status-badge.desatualizado { background:#d2992222; color:#d29922; }',
 
         /* Tab Content */
-        '#eproc-dashboard .tab-content { display:none; animation:fadeTab 0.25s ease; }',
+        '#eproc-dashboard .tab-content { display:none; animation:fadeTab 0.25s ease; padding-bottom:40px; }',
         '#eproc-dashboard .tab-content.active { display:block; }',
         '@keyframes fadeTab { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }',
 
@@ -590,7 +592,7 @@
 
         /* Sidebar Filters */
         '#eproc-dashboard .filter-sidebar { background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:12px; }',
-        '#eproc-dashboard .filter-sidebar .fs-title { font-size:9px; text-transform:uppercase; letter-spacing:0.6px; color:#8b949e; font-weight:600; margin-bottom:8px; }',
+        '#eproc-dashboard .filter-sidebar .fs-title { text-align:center; font-size:9px; text-transform:uppercase; letter-spacing:0.6px; color:#8b949e; font-weight:600; margin-bottom:8px; }',
         '#eproc-dashboard .filter-sidebar .fs-label { font-size:10px; color:#8b949e; margin-bottom:2px; font-weight:500; }',
         '#eproc-dashboard .filter-sidebar .fs-field { width:100%; padding:5px 8px; background:#161b22; border:1px solid #30363d; border-radius:6px; font-size:11px; color:#e6edf3; margin-bottom:6px; font-family:inherit; }',
         '#eproc-dashboard .filter-sidebar .fs-field:focus { outline:none; border-color:#1f6feb; box-shadow:0 0 0 2px rgba(31,111,235,.12); }',
@@ -609,6 +611,17 @@
         '#eproc-dashboard .filter-sidebar .fs-ord-toggle { display:flex; gap:3px; margin-bottom:6px; }',
         '#eproc-dashboard .filter-sidebar .fs-ord-toggle span { flex:1; text-align:center; padding:5px; border-radius:5px; font-size:9px; cursor:pointer; transition:all 0.15s; background:#21262d; color:#8b949e; }',
         '#eproc-dashboard .filter-sidebar .fs-ord-toggle span.active { background:#1f6feb33; color:#58a6ff; font-weight:600; }',
+        '#eproc-dashboard .rg-paral { margin-top:12px; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:8px; }',
+        '#eproc-dashboard .rg-paral-title { display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:600; color:#e6edf3; margin-bottom:6px; }',
+        '#eproc-dashboard .rg-paral-badge { background:#f8514933; color:#f85149; padding:1px 6px; border-radius:8px; font-size:9px; }',
+        '#eproc-dashboard .rg-paral-list { display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; }',
+        '#eproc-dashboard .rg-paral-list::-webkit-scrollbar { width:4px; }',
+        '#eproc-dashboard .rg-paral-list::-webkit-scrollbar-thumb { background:#30363d; border-radius:2px; }',
+        '#eproc-dashboard .rg-paral-item { display:flex; justify-content:space-between; font-size:9px; border-bottom:1px solid #21262d; padding-bottom:4px; }',
+        '#eproc-dashboard .rg-paral-item:last-child { border-bottom:none; padding-bottom:0; }',
+        '#eproc-dashboard .rg-paral-left { display:flex; flex-direction:column; gap:2px; color:#c9d1d9; font-weight:500; }',
+        '#eproc-dashboard .rg-paral-left span { color:#8b949e; font-size:8px; font-weight:400; }',
+        '#eproc-dashboard .rg-paral-right { color:#8b949e; font-weight:600; }',
 
         /* Glossary */
         '#eproc-dashboard .glossary-box { margin-top:4px; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:8px; font-size:10px; max-height:600px; overflow-y:auto; }',
@@ -627,19 +640,74 @@
         '#eproc-dashboard .dash-summary strong { color:#e6edf3; }',
 
         /* KPIs */
-        '#eproc-dashboard .kpi-row { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; }',
-        '#eproc-dashboard .kpi-card { background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:8px; }',
-        '#eproc-dashboard .kpi-card .kpi-num { font-size:20px; font-weight:700; }',
-        '#eproc-dashboard .kpi-card .kpi-label { font-size:10px; font-weight:600; color:#e6edf3; margin-top:2px; }',
-        '#eproc-dashboard .kpi-card .kpi-delta { font-size:9px; font-weight:400; color:#8b949e; margin-top:3px; }',
+        '#eproc-dashboard .kpi-row { display:flex; gap:8px; width:100%; margin-bottom:4px; }',
+        '#eproc-dashboard .kpi-card { flex:1; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:12px; text-align:left; display:flex; flex-direction:column; position:relative; overflow:hidden; }',
+        '#eproc-dashboard .kpi-card-exec::before { content:""; position:absolute; top:0; right:0; bottom:0; left:50%; background:linear-gradient(90deg, transparent, rgba(210, 153, 34, 0.15)); pointer-events:none; }',
+        '#eproc-dashboard .kpi-card-proc::before { content:""; position:absolute; top:0; right:0; bottom:0; left:50%; background:linear-gradient(90deg, transparent, rgba(88, 166, 255, 0.15)); pointer-events:none; }',
+        '#eproc-dashboard .kpi-card .kpi-num { font-size:24px; font-weight:700; color:#fff; z-index:1; }',
+        '#eproc-dashboard .kpi-card .kpi-label { font-size:11px; font-weight:600; color:#c9d1d9; margin-top:4px; z-index:1; }',
+        '#eproc-dashboard .kpi-card .kpi-top { display:flex; justify-content:space-between; align-items:flex-start; }',
+        '#eproc-dashboard .kpi-card .kpi-delta { font-size:10px; font-weight:500; color:#8b949e; display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex-shrink:0; padding-top:2px; z-index:1; }',
         '#eproc-dashboard .rel-top-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid #21262d; }',
         '#eproc-dashboard .rel-top-bar .rt-title { font-size:12px; font-weight:600; color:#e6edf3; }',
         '#eproc-dashboard .rel-top-bar button { font-family:inherit; font-size:11px; padding:4px 10px; border:1px solid #1f6feb; border-radius:6px; background:#1f6feb22; color:#58a6ff; cursor:pointer; transition:all 0.15s; }',
         '#eproc-dashboard .rel-top-bar button:hover { background:#1f6feb44; color:#fff; }',
+        '#eproc-dashboard .btn-sober-gold { position:relative; background:transparent; color:#c9d1d9; font-family:inherit; font-size:11px; padding:4px 12px; border:none; border-radius:6px; cursor:pointer; transition:all 0.25s ease; z-index:1; display:flex; align-items:center; justify-content:center; gap:4px; text-decoration:none; white-space:nowrap; }',
+        '#eproc-dashboard .btn-sober-gold::before { content:""; position:absolute; inset:0; border-radius:6px; padding:0.5px; background:linear-gradient(90deg, rgba(210,153,34,0.05) 0%, rgba(210,153,34,0.6) 20%, rgba(210,153,34,0.8) 50%, rgba(210,153,34,0.6) 80%, rgba(210,153,34,0.05) 100%); -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite:xor; mask-composite:exclude; z-index:-1; transition:all 0.25s ease; }',
+        '#eproc-dashboard .btn-sober-gold:hover { background:rgba(210,153,34,0.12); }',
+        '#eproc-dashboard.light-mode .btn-sober-gold { color:#475569; }',
+        '#eproc-dashboard.light-mode .btn-sober-gold:hover { background:rgba(210,153,34,0.15); }',
         '#eproc-dashboard .ver-mais-processos { color: #58a6ff; margin-left: 4px; }',
         '#eproc-dashboard .ver-mais-processos:hover { color: #c9d1d9; }',
-        '#eproc-dashboard .kpi-card.kpi-blue .kpi-num { color:#58a6ff; }',
-        '#eproc-dashboard .kpi-card.kpi-green .kpi-num { color:#3fb950; }',
+
+        '#eproc-dashboard .hist-bar { display:flex; align-items:center; gap:4px; }',
+        '#eproc-dashboard .hist-bar .hist-input { flex:0 1 200px; padding:4px 8px; font-size:11px; border:1px solid #30363d; border-radius:4px; background:#0d1117; color:#c9d1d9; outline:none; }',
+        '#eproc-dashboard .hist-bar .hist-input:focus { border-color:#58a6ff; }',
+        '#eproc-dashboard .hist-bar .hist-spacer { flex:1; }',
+        '#eproc-dashboard.light-mode .hist-bar .hist-input { border-color:#e4e4e7; background:#f8fafc; color:#0f172a; }',
+        '#eproc-dashboard.light-mode .hist-bar .hist-input:focus { border-color:#0f62fe; }',
+
+        '#eproc-hist-overlay { display:none; position:fixed; inset:0; z-index:999999; align-items:center; justify-content:center; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }',
+        '#eproc-hist-overlay.active { display:flex; }',
+        '#eproc-hist-overlay .eproc-modal { background:#0d1117; border:1px solid #30363d; border-radius:14px; width:92%; max-width:720px; max-height:85vh; overflow:hidden; box-shadow:0 12px 48px rgba(0,0,0,0.5); transform:scale(0.96); opacity:0; transition:transform 0.25s ease, opacity 0.25s ease; }',
+        '#eproc-hist-overlay.active .eproc-modal { transform:scale(1); opacity:1; }',
+        '#eproc-hist-overlay .modal-header { padding:14px 20px; background:#0d1117; border-bottom:1px solid #21262d; display:flex; justify-content:space-between; align-items:center; }',
+        '#eproc-hist-overlay .modal-header .m-title { font-size:14px; font-weight:700; color:#e6edf3; display:flex; align-items:center; gap:8px; }',
+        '#eproc-hist-overlay .modal-header .m-close { background:transparent; border:none; color:#8b949e; font-size:20px; cursor:pointer; border-radius:6px; width:32px; height:32px; display:flex; align-items:center; justify-content:center; transition:0.15s; }',
+        '#eproc-hist-overlay .modal-header .m-close:hover { color:#e6edf3; background:#21262d; }',
+        '#eproc-hist-overlay .modal-body { padding:16px 20px 20px; }',
+        '#eproc-hist-overlay .hist-search-row { display:flex; gap:8px; margin-bottom:14px; }',
+        '#eproc-hist-overlay #eproc-hist-input { flex:1; padding:8px 12px; font-size:12px; border:1px solid #30363d; border-radius:6px; background:#161b22; color:#c9d1d9; outline:none; transition:0.15s; }',
+        '#eproc-hist-overlay #eproc-hist-input:focus { border-color:#58a6ff; box-shadow:0 0 0 3px rgba(88,166,255,0.15); }',
+        '#eproc-hist-overlay #eproc-hist-search { border:none; outline:none; padding:6px 18px; font-size:11px; cursor:pointer; border-radius:6px; background:transparent; color:#c9d1d9; transition:all 0.25s ease; position:relative; z-index:1; }',
+        '#eproc-hist-overlay #eproc-hist-search::before { content:""; position:absolute; inset:0; border-radius:6px; padding:0.5px; background:linear-gradient(90deg, rgba(210,153,34,0.05) 0%, rgba(210,153,34,0.6) 20%, rgba(210,153,34,0.8) 50%, rgba(210,153,34,0.6) 80%, rgba(210,153,34,0.05) 100%); -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); -webkit-mask-composite:xor; mask-composite:exclude; z-index:-1; }',
+        '#eproc-hist-overlay #eproc-hist-search:hover { background:rgba(210,153,34,0.12); }',
+        '#eproc-hist-overlay #eproc-hist-results { max-height:380px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#30363d transparent; }',
+        '#eproc-hist-overlay #eproc-hist-results .hr-total { font-size:15px; font-weight:700; color:#e6edf3; padding:0 0 14px 0; border-bottom:1px solid #21262d; margin-bottom:0; }',
+        '#eproc-hist-overlay #eproc-hist-results .hr-total .hl-proc { color:#58a6ff; }',
+        '#eproc-hist-overlay #eproc-hist-results table { width:100%; border-collapse:collapse; font-size:11px; }',
+        '#eproc-hist-overlay #eproc-hist-results th { text-align:left; padding:10px 10px; color:#8b949e; font-weight:600; font-size:10px; text-transform:uppercase; letter-spacing:.6px; border-bottom:1px solid #21262d; position:sticky; top:0; background:#0d1117; z-index:1; }',
+        '#eproc-hist-overlay #eproc-hist-results td { padding:9px 10px; border-bottom:1px solid #161b22; color:#c9d1d9; vertical-align:middle; }',
+        '#eproc-hist-overlay #eproc-hist-results tbody tr:hover td { background:rgba(255,255,255,0.02); }',
+        '#eproc-hist-overlay #eproc-hist-results td.col-data { color:#8b949e; font-size:11px; }',
+        '#eproc-hist-overlay #eproc-hist-results td.col-regra { font-size:12px; font-weight:600; }',
+        '#eproc-hist-overlay #eproc-hist-results .grupo-badge { display:inline-block; padding:2px 10px; border-radius:4px; font-size:10px; font-weight:500; white-space:nowrap; }',
+        '#eproc-hist-overlay.light-mode { background:rgba(255,255,255,0.7); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px); }',
+        '#eproc-hist-overlay.light-mode .eproc-modal { background:#ffffff; border-color:#e4e4e7; box-shadow:0 12px 48px rgba(0,0,0,0.08); }',
+        '#eproc-hist-overlay.light-mode .modal-header { background:#f8fafc; border-color:#e4e4e7; }',
+        '#eproc-hist-overlay.light-mode .modal-header .m-title { color:#0f172a; }',
+        '#eproc-hist-overlay.light-mode .modal-header .m-close { color:#64748b; }',
+        '#eproc-hist-overlay.light-mode .modal-header .m-close:hover { color:#0f172a; background:#f1f5f9; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-input { background:#f8fafc; border-color:#e4e4e7; color:#0f172a; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-input:focus { border-color:#0f62fe; box-shadow:0 0 0 3px rgba(15,98,254,0.12); }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-search { color:#475569; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-search:hover { background:rgba(210,153,34,0.15); }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-results .hr-total { color:#0f172a; border-color:#e4e4e7; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-results .hr-total .hl-proc { color:#0f62fe; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-results th { color:#64748b; border-color:#e4e4e7; background:#ffffff; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-results td { color:#475569; border-color:#f1f5f9; }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-results tbody tr:hover td { background:rgba(0,0,0,0.015); }',
+        '#eproc-hist-overlay.light-mode #eproc-hist-results td.col-data { color:#94a3b8; }',
 
         '#eproc-dashboard .charts-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; }',
         '#eproc-dashboard .chart-box { background:#0d1117; border:1px solid #21262d; border-radius:8px; padding:10px; position:relative; display:flex; flex-direction:column; transition: opacity 0.4s ease, transform 0.4s ease; }',
@@ -666,9 +734,6 @@
         '#eproc-dashboard .data-table-wrap .dt-header .dt-title { font-size:10px; font-weight:600; color:#e6edf3; }',
         '#eproc-dashboard .data-table-wrap .dt-header .dt-actions { display:flex; gap:4px; }',
         '#eproc-dashboard .data-table-wrap .dt-header .dt-actions input { padding:3px 8px; background:#161b22; border:1px solid #30363d; border-radius:5px; font-size:9px; color:#e6edf3; width:90px; font-family:inherit; }',
-        '#eproc-dashboard .data-table-wrap .dt-header .dt-actions button { padding:3px 8px; border:none; border-radius:5px; font-size:9px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.15s; }',
-        '#eproc-dashboard .data-table-wrap .dt-header .dt-actions .btn-xlsx { background:#1f6feb; color:#fff; }',
-        '#eproc-dashboard .data-table-wrap .dt-header .dt-actions .btn-xlsx:hover { background:#388bfd; }',
         '#eproc-dashboard .data-table-wrap .dt-header .dt-actions .btn-processos { background:#21262d; color:#8b949e; }',
         '#eproc-dashboard .data-table-wrap .dt-header .dt-actions .btn-processos:hover { background:#30363d; color:#e6edf3; }',
         '#eproc-dashboard .data-table-wrap .dt-header .dt-actions .btn-processos.active { background:#1f6feb33; color:#58a6ff; }',
@@ -689,6 +754,11 @@
         '#eproc-dashboard .dt-footer .dt-pages span { padding:2px 5px; border:1px solid #21262d; border-radius:3px; cursor:pointer; color:#484f58; transition:all 0.15s; }',
         '#eproc-dashboard .dt-footer .dt-pages span:hover { border-color:#30363d; color:#8b949e; }',
         '#eproc-dashboard .dt-footer .dt-pages span.active { background:#1f6feb33; border-color:#1f6feb44; color:#58a6ff; font-weight:600; }',
+        
+        /* Global Footer */
+        '#eproc-dashboard .global-footer { position:absolute; bottom:0; left:0; right:0; height:40px; background:#0d1117; border-top:1px solid #21262d; display:flex; justify-content:space-between; align-items:center; padding:0 16px; z-index:100; border-radius: 0 0 12px 12px; }',
+        '#eproc-dashboard .global-footer .gf-left { font-size:10px; color:#8b949e; font-weight:500; }',
+        '#eproc-dashboard .global-footer .gf-right { display:flex; gap:8px; }',
 
         /* Process List Modal (bottom right) */
         '#eproc-processos-overlay { display:none; position:fixed; bottom:16px; right:16px; z-index:1000001; width:480px; max-width:90vw; max-height:60vh; background:#161b22; border:1px solid #30363d; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.5); overflow:hidden; }',
@@ -720,9 +790,7 @@
     var LIGHT_CSS = [
         '#eproc-dashboard.light-mode, #eproc-processos-overlay.light-mode { background:#ffffff; border-color:#e4e4e7; box-shadow:0 10px 40px -10px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.02); }',
         '#eproc-dashboard.light-mode .dash-header, #eproc-dashboard.light-mode .tab-bar, #eproc-processos-overlay.light-mode .pl-header { background:#f8fafc; }',
-        '#eproc-dashboard.light-mode .htitle, #eproc-dashboard.light-mode .chart-box .ch-title span, #eproc-dashboard.light-mode .data-table-wrap .dt-header .dt-title, #eproc-dashboard.light-mode .kpi-card .kpi-num:not(.kpi-blue .kpi-num):not(.kpi-green .kpi-num), #eproc-dashboard.light-mode .tab-bar .tab-btn.active, #eproc-dashboard.light-mode .stats-box td.value, #eproc-dashboard.light-mode .data-table td.val, #eproc-processos-overlay.light-mode .pl-header span { color:#0f172a; }',
-        '#eproc-dashboard.light-mode .kpi-card.kpi-blue .kpi-num { color:#0f62fe; }',
-        '#eproc-dashboard.light-mode .kpi-card.kpi-green .kpi-num { color:#10b981; }',
+        '#eproc-dashboard.light-mode .htitle, #eproc-dashboard.light-mode .chart-box .ch-title span, #eproc-dashboard.light-mode .data-table-wrap .dt-header .dt-title, #eproc-dashboard.light-mode .kpi-card .kpi-num, #eproc-dashboard.light-mode .tab-bar .tab-btn.active, #eproc-dashboard.light-mode .stats-box td.value, #eproc-dashboard.light-mode .data-table td.val, #eproc-processos-overlay.light-mode .pl-header span { color:#0f172a; }',
         '#eproc-dashboard.light-mode .hstatus, #eproc-dashboard.light-mode .tab-bar .tab-btn, #eproc-dashboard.light-mode .tab-bar .tab-btn .tbadge, #eproc-dashboard.light-mode .ext-footer button, #eproc-dashboard.light-mode .filter-sidebar .fs-title, #eproc-dashboard.light-mode .filter-sidebar .fs-label, #eproc-dashboard.light-mode .stats-box td.label, #eproc-dashboard.light-mode .log-entry, #eproc-dashboard.light-mode .rel-loading, #eproc-dashboard.light-mode .rel-empty, #eproc-dashboard.light-mode .chart-box .ch-title .ch-actions button, #eproc-dashboard.light-mode .dt-footer, #eproc-dashboard.light-mode .dt-footer .dt-pages span, #eproc-dashboard.light-mode .data-table th:not(:hover), #eproc-dashboard.light-mode .data-table td.regra-num { color:#1e293b; }',
         '#eproc-dashboard.light-mode .dash-summary, #eproc-dashboard.light-mode .kpi-card .kpi-label, #eproc-dashboard.light-mode .kpi-card .kpi-delta, #eproc-dashboard.light-mode .data-table td, #eproc-dashboard.light-mode .glossary-box .g-row, #eproc-dashboard.light-mode .tooltip-box .tt-row, #eproc-dashboard.light-mode .chart-box .ch-dims span, #eproc-dashboard.light-mode .rel-empty .e-sub, #eproc-dashboard.light-mode .filter-sidebar .fs-presets span { color:#64748b; }',
         '#eproc-dashboard.light-mode .stats-box, #eproc-dashboard.light-mode .filter-sidebar, #eproc-dashboard.light-mode .dash-summary, #eproc-dashboard.light-mode .kpi-card, #eproc-dashboard.light-mode .chart-box, #eproc-dashboard.light-mode .data-table-wrap, #eproc-dashboard.light-mode .glossary-box, #eproc-dashboard.light-mode .log-area, #eproc-dashboard.light-mode .tooltip-box, #eproc-dashboard.light-mode .rel-empty, #eproc-dashboard.light-mode .filter-sidebar .fs-field, #eproc-dashboard.light-mode .data-table-wrap .dt-header .dt-actions input { background:#f8fafc; border-color:#e4e4e7; }',
@@ -797,13 +865,16 @@
         var dash = document.getElementById('eproc-dashboard');
         if (!dash) return;
         var procModal = document.getElementById('eproc-processos-overlay');
+        var histModal = document.getElementById('eproc-hist-overlay');
 
         if (state.darkMode) {
             dash.classList.remove('light-mode');
             if (procModal) procModal.classList.remove('light-mode');
+            if (histModal) histModal.classList.remove('light-mode');
         } else {
             dash.classList.add('light-mode');
             if (procModal) procModal.classList.add('light-mode');
+            if (histModal) histModal.classList.add('light-mode');
         }
 
         // Re-renderiza os gráficos com as novas cores do tema atualizado somente se solicitado
@@ -863,9 +934,11 @@
             '    <div class="stats-box" id="eproc-stats-area">' +
             '      <table>' +
             '        <tr><td class="label">Regras processadas</td><td class="value" id="eproc-stat-regras">0 / 0</td></tr>' +
-            '        <tr><td class="label">Extraídos do EPROC</td><td class="value" id="eproc-stat-extraidos">0</td></tr>' +
-            '        <tr><td class="label">Enviados à planilha</td><td class="value" id="eproc-stat-novos">0</td></tr>' +
+            '        <tr><td class="label">Extraídos</td><td class="value" id="eproc-stat-extraidos">0</td></tr>' +
+            '        <tr><td class="label" style="color:#58a6ff">Enviados (Novos)</td><td class="value info" id="eproc-stat-novos">0</td></tr>' +
             '        <tr><td class="label">Ignorados (já existiam)</td><td class="value" id="eproc-stat-ignorados">0</td></tr>' +
+            '        <tr><td class="label">Duplicados Descartados</td><td class="value" id="eproc-stat-duplicados">0</td></tr>' +
+            '        <tr><td class="label warn">Erros/Falhas</td><td class="value warn" id="eproc-stat-erros">0</td></tr>' +
             '        <tr><td class="label">Erros Extração</td><td class="value" id="eproc-stat-erros-fetch">0</td></tr>' +
             '        <tr><td class="label">Erros Envio</td><td class="value" id="eproc-stat-erros-flush">0</td></tr>' +
             '        <tr><td class="label">Tempo estimado</td><td class="value" id="eproc-stat-eta">--:--</td></tr>' +
@@ -896,7 +969,7 @@
             '    </div>' +
             '    <div class="dash-grid" id="eproc-dash-grid" style="display:none;">' +
             '      <div class="filter-sidebar" id="eproc-rel-filters">' +
-            '        <div class="fs-title">🔎 Filtros</div>' +
+            '        <div class="fs-title">Filtros</div>' +
             '        <div class="fs-label">Período</div>' +
             '        <div class="fs-row">' +
             '          <input type="date" class="fs-field" id="eproc-filtro-data-inicio">' +
@@ -924,15 +997,14 @@
             '        <hr class="fs-divider">' +
             '        <div class="fs-label">Ordenar por:</div>' +
             '        <div class="fs-ord-toggle">' +
-            '          <span class="active" data-ordem="frequencia-desc">📊 +Frequentes</span>' +
-            '          <span data-ordem="frequencia-asc">📊 -Frequentes</span>' +
-            '          <span data-ordem="cronologica">📅 Cronológica</span>' +
+'          <span class="active" data-ordem="frequencia-desc"><strong style="font-size:1.4em;line-height:1">+</strong>Frequentes</span>' +
+'          <span data-ordem="frequencia-asc"><strong style="font-size:1.4em;line-height:1">-</strong>Frequentes</span>' +
             '        </div>' +
             '        <hr class="fs-divider">' +
-            '        <button class="fs-btn primary" id="eproc-btn-aplicar">Aplicar Filtros</button>' +
             '        <button class="fs-btn secondary" id="eproc-btn-limpar">Limpar</button>' +
+            '        <div id="eproc-regras-paralisadas"></div>' +
             '        <hr class="fs-divider">' +
-            '        <div class="fs-label">📖 Glossário</div>' +
+            '        <div class="fs-label">Glossário</div>' +
             '        <select class="fs-field" id="eproc-glossario-select">' +
             '          <option value="">Selecione uma regra...</option>' +
             '        </select>' +
@@ -941,18 +1013,18 @@
             '      <div class="dash-main" id="eproc-dash-main">' +
             '        <div class="dash-summary" id="eproc-dash-summary">📌 Carregue os dados para ver o resumo.</div>' +
             '        <div class="kpi-row">' +
-            '          <div class="kpi-card kpi-blue"><div class="kpi-num" id="kpi-exec">—</div><div class="kpi-label">Execuções</div><div class="kpi-delta" id="kpi-exec-delta"></div></div>' +
-            '          <div class="kpi-card kpi-blue"><div class="kpi-num" id="kpi-media-exec">—</div><div class="kpi-label">Média de Execuções / Dia</div><div class="kpi-delta" id="kpi-media-exec-delta"></div></div>' +
-            '          <div class="kpi-card kpi-green"><div class="kpi-num" id="kpi-proc">—</div><div class="kpi-label">Processos impactados</div><div class="kpi-delta" id="kpi-proc-delta"></div></div>' +
-            '          <div class="kpi-card kpi-green"><div class="kpi-num" id="kpi-media-proc">—</div><div class="kpi-label">Média de Processos / Dia</div><div class="kpi-delta" id="kpi-media-proc-delta"></div></div>' +
+            '          <div class="kpi-card kpi-card-exec"><div class="kpi-top"><div class="kpi-num" id="kpi-exec">—</div><div class="kpi-delta" id="kpi-exec-delta"></div></div><div class="kpi-label">Execuções</div></div>' +
+            '          <div class="kpi-card kpi-card-exec"><div class="kpi-top"><div class="kpi-num" id="kpi-media-exec">—</div></div><div class="kpi-label">Média de Execuções / Dia</div></div>' +
+            '          <div class="kpi-card kpi-card-proc"><div class="kpi-top"><div class="kpi-num" id="kpi-proc">—</div><div class="kpi-delta" id="kpi-proc-delta"></div></div><div class="kpi-label">Processos Impactados</div></div>' +
+            '          <div class="kpi-card kpi-card-proc"><div class="kpi-top"><div class="kpi-num" id="kpi-media-proc">—</div></div><div class="kpi-label">Média de Processos / Dia</div></div>' +
             '        </div>' +
             '        <div class="charts-grid">' +
             '          <div class="chart-box full" id="chart-temporal-wrap">' +
-            '            <div class="ch-title"><span>📈 Série Temporal</span> <button class="btn-metrica-toggle" id="eproc-metrica-toggle" style="margin-left: 12px; font-size: 11px; font-weight: 600; cursor: pointer; border: 1px solid currentColor; border-radius: 4px; padding: 2px 8px; background: transparent; transition: all 0.2s; color: #58a6ff;">Execuções</button><div class="ch-actions"><button class="btn-chart-png" data-chart="temporal"><img width="16" height="16" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" style="vertical-align: middle;"/></button></div></div>' +
+            '            <div class="ch-title"><div style="display:flex;align-items:center;gap:8px"><span>Série Temporal</span><button class="btn-sober-gold" id="eproc-metrica-toggle">Execuções</button></div><div class="ch-actions"><button class="btn-chart-png" data-chart="temporal"><img width="16" height="16" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" style="vertical-align: middle;"/></button></div></div>' +
             '            <div class="ch-body"><canvas id="chart-temporal"></canvas></div>' +
             '          </div>' +
             '          <div class="chart-box" id="chart-distrib-wrap">' +
-            '            <div class="ch-title"><span>🥧 Distribuição</span><div class="ch-actions"><button class="btn-chart-png" data-chart="distrib"><img width="16" height="16" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" style="vertical-align: middle;"/></button></div></div>' +
+            '            <div class="ch-title"><span>Distribuição</span><div class="ch-actions"><button class="btn-chart-png" data-chart="distrib"><img width="16" height="16" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" style="vertical-align: middle;"/></button></div></div>' +
             '            <div class="ch-dims" id="pie-dims">' +
             '              <span data-dim="grupo">Grupo</span>' +
             '              <span data-dim="regra">Regra</span>' +
@@ -961,7 +1033,7 @@
             '            <div class="ch-body"><canvas id="chart-distrib"></canvas></div>' +
             '          </div>' +
             '          <div class="chart-box scrollable" id="chart-top-wrap">' +
-            '            <div class="ch-title"><span>📊 Regras</span><div class="ch-actions"><button class="btn-chart-png" data-chart="top"><img width="16" height="16" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" style="vertical-align: middle;"/></button></div></div>' +
+            '            <div class="ch-title"><span>Regras</span><div class="ch-actions"><button class="btn-chart-png" data-chart="top"><img width="16" height="16" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" style="vertical-align: middle;"/></button></div></div>' +
             '            <div class="ch-body">' +
             '              <div style="position:relative; width:100%;" id="chart-top-inner">' +
             '                <canvas id="chart-top"></canvas>' +
@@ -971,10 +1043,10 @@
             '        </div>' +
             '        <div class="data-table-wrap">' +
             '          <div class="dt-header">' +
-            '            <div class="dt-title">📋 Dados Detalhados</div>' +
+            '            <div class="dt-title">Dados Detalhados</div>' +
             '            <div class="dt-actions">' +
             '              <input id="eproc-tabela-busca" placeholder="Buscar...">' +
-            '              <button class="btn-xlsx" id="eproc-btn-xlsx" style="display: flex; align-items: center; gap: 4px;"><img width="14" height="14" src="https://img.icons8.com/metro/26/download.png" alt="download" class="icon-invertible" /> Relatório Consolidado</button>' +
+            '              <button class="btn-sober-gold" id="eproc-btn-xlsx">Relatório Consolidado</button>' +
             '            </div>' +
             '          </div>' +
             '          <div style="overflow-x:auto;">' +
@@ -988,10 +1060,24 @@
             '          <div class="dt-footer">' +
             '            <span id="eproc-table-info">0 registros</span>' +
             '            <div class="dt-pages" id="eproc-table-pages"></div>' +
-            '            <button class="btn-processos active" id="eproc-btn-processos">Todos os processos</button>' +
+            '            <div class="hist-bar">' +
+            '              <button class="btn-sober-gold" id="eproc-btn-hist-proc">Execuções por Processo</button>' +
+            '              <input type="text" id="eproc-hist-input" class="hist-input" placeholder="N\u00BA do processo..." style="display:none">' +
+            '              <button class="btn-sober-gold" id="eproc-hist-search" style="display:none;border:none;outline:none;font-size:10px;padding:2px 10px;">Ok</button>' +
+            '              <span class="hist-spacer"></span>' +
+            '              <button class="btn-sober-gold" id="eproc-btn-processos">Todos os processos</button>' +
+            '            </div>' +
             '          </div>' +
             '        </div>' +
             '      </div>' +
+            '    </div>' +
+            '  </div>' +
+            '  <div class="global-footer">' +
+            '    <div class="gf-left">Idealizado por ®Allison de Castro Silva</div>' +
+            '    <div class="gf-right">' +
+            '      <button class="btn-sober-gold" id="eproc-btn-export-json">Exportar dados</button>' +
+            '      <button class="btn-sober-gold" id="eproc-btn-import-json">Importar dados</button>' +
+            '      <button class="btn-sober-gold" id="eproc-btn-limpar-base">Limpar Banco de Dados</button>' +
             '    </div>' +
             '  </div>' +
             '</div>';
@@ -1005,6 +1091,37 @@
             '<div class="pl-body" id="eproc-pl-body"></div>' +
             '<div class="pl-count" id="eproc-pl-count"></div>';
         dash.appendChild(procOverlay);
+
+        // ---- HISTORICO PROCESSO MODAL ----
+        var histOverlay = document.createElement('div');
+        histOverlay.id = 'eproc-hist-overlay';
+        histOverlay.innerHTML =
+            '<div class="eproc-modal">' +
+            '<div class="modal-header">' +
+            '  <span class="m-title">\uD83D\uDD0D Execu\u00E7\u00F5es por Processo</span>' +
+            '  <button class="m-close" id="eproc-hist-close">&times;</button>' +
+            '</div>' +
+            '<div class="modal-body">' +
+            '  <div class="hist-search-row">' +
+            '    <input type="text" id="eproc-hist-input" placeholder="N\u00FAmero do processo...">' +
+            '    <button class="btn-sober-gold" id="eproc-hist-search">Ok</button>' +
+            '  </div>' +
+            '  <div id="eproc-hist-results"><div style="color:#8b949e;font-size:11px;text-align:center;padding:20px;">Digite um n\u00FAmero de processo e clique em Ok.</div></div>' +
+            '</div>' +
+            '</div>';
+        document.body.appendChild(histOverlay);
+
+        // ---- BIND HELPERS ----
+        function bindEl(id, event, fn) {
+            var el = document.getElementById(id);
+            if (!el) { adicionarLog('§ BIND FALHOU: #' + id + ' n\u00e3o encontrado', 'error'); return; }
+            el[event] = fn;
+        }
+        function bindAll(selector, event, fn) {
+            var els = document.querySelectorAll(selector);
+            if (!els.length) { adicionarLog('§ BIND FALHOU: "' + selector + '" sem matches', 'error'); return; }
+            els.forEach(function(el) { el[event] = fn; });
+        }
 
         // ---- BIND EVENTS ----
         miniBtn.onclick = function () {
@@ -1029,16 +1146,16 @@
             });
         };
 
-        document.getElementById('eproc-btn-theme').onclick = function () {
+        bindEl('eproc-btn-theme', 'onclick', function () {
             state.darkMode = !state.darkMode;
             GM_setValue('darkMode', state.darkMode);
             this.innerHTML = state.darkMode ? '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>' : '<svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
             this.title = state.darkMode ? 'Ativar Modo Claro' : 'Ativar Modo Escuro';
             aplicarTema(true);
             adicionarLog('Tema ' + (state.darkMode ? 'escuro' : 'claro') + ' ativado via atalho', 'info');
-        };
+        });
 
-        document.getElementById('eproc-btn-fechar').onclick = function () {
+        bindEl('eproc-btn-fechar', 'onclick', function () {
             var d = document.getElementById('eproc-dashboard');
             d.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
             d.style.opacity = '0';
@@ -1051,9 +1168,9 @@
                 d.style.transition = '';
                 miniBtn.style.display = 'flex';
             }, 260);
-        };
+        });
 
-        document.getElementById('eproc-btn-viewmode').onclick = function () {
+        bindEl('eproc-btn-viewmode', 'onclick', function () {
             var d = document.getElementById('eproc-dashboard');
             var rect = d.getBoundingClientRect();
             state.compactMode = !state.compactMode;
@@ -1081,56 +1198,47 @@
                 d.className = (state.compactMode ? 'compact' : 'maximized') + ' show' + themeClass;
                 aplicarTema(false);
 
-                // Aguarda o navegador estabilizar o reflow de layout (150ms) antes de re-renderizar
                 setTimeout(function () {
                     if (state.dadosFiltrados && state.dadosFiltrados.length > 0) {
                         renderDashboard();
                     }
                 }, 150);
             });
-        };
+        });
 
-        // Auto-render on filter change
-        document.getElementById('eproc-filtro-grupo').onchange = function () {
-            state.filters.grupo = this.value;
-            atualizarDropdownsPorFiltros();
-            if (state.dadosFiltrados) renderDashboard();
-        };
-        document.getElementById('eproc-filtro-regra').onchange = function () {
-            state.filters.regra = this.value;
-            if (state.dadosFiltrados) renderDashboard();
-        };
         var procTimer;
-        document.getElementById('eproc-filtro-processo').oninput = function () {
+        bindEl('eproc-filtro-processo', 'oninput', function () {
             clearTimeout(procTimer);
             var val = this.value;
             procTimer = setTimeout(function () {
-                state.filters.processo = val.trim().toLowerCase();
+                state.filters.processo = val.replace(/[.\-]/g, '').trim().toLowerCase();
                 if (state.dadosFiltrados) renderDashboard();
             }, 300);
-        };
-
-        // Tab switching
-        var tabs = document.querySelectorAll('#eproc-dashboard .tab-btn');
-        tabs.forEach(function (btn) {
-            btn.onclick = function () {
-                var tab = this.dataset.tab;
-                tabs.forEach(function (b) { b.classList.remove('active'); });
-                this.classList.add('active');
-                document.querySelectorAll('#eproc-dashboard .tab-content').forEach(function (c) {
-                    c.classList.remove('active');
-                });
-                document.getElementById('tab-' + tab).classList.add('active');
-                state.tabAtiva = tab;
-
-                if (tab === 'relatorios') {
-                    abrirAbaRelatorios();
-                }
-            };
         });
 
+        // Tab switching
+        (function() {
+            var tabs = document.querySelectorAll('#eproc-dashboard .tab-btn');
+            tabs.forEach(function (btn) {
+                btn.onclick = function () {
+                    var tab = this.dataset.tab;
+                    tabs.forEach(function (b) { b.classList.remove('active'); });
+                    this.classList.add('active');
+                    document.querySelectorAll('#eproc-dashboard .tab-content').forEach(function (c) {
+                        c.classList.remove('active');
+                    });
+                    document.getElementById('tab-' + tab).classList.add('active');
+                    state.tabAtiva = tab;
+
+                    if (tab === 'relatorios') {
+                        abrirAbaRelatorios();
+                    }
+                };
+            });
+        })();
+
         // Drag header
-        document.getElementById('eproc-dash-header').onmousedown = iniciarArrasto;
+        bindEl('eproc-dash-header', 'onmousedown', iniciarArrasto);
         document.addEventListener('mousemove', function (e) {
             if (!state.arrastando) return;
             var d = document.getElementById('eproc-dashboard');
@@ -1146,79 +1254,186 @@
         });
 
         // Tab 1 buttons
-        document.getElementById('eproc-btn-importar').onclick = onClickImportar;
+        bindEl('eproc-btn-importar', 'onclick', onClickImportar);
 
         // Stats tooltip
         var statsArea = document.getElementById('eproc-stats-area');
-        statsArea.onmouseenter = mostrarTooltip;
-        statsArea.onmouseleave = function () {
-            document.getElementById('eproc-tooltip').style.display = 'none';
-        };
-
-        // Processos overlay close
-        document.getElementById('eproc-pl-close').onclick = function () {
-            document.getElementById('eproc-processos-overlay').classList.remove('active');
-        };
-
-        // ---- BIND DASHBOARD FILTERS ----
-        document.getElementById('eproc-btn-aplicar').onclick = aplicarFiltrosEAplicar;
-        document.getElementById('eproc-btn-limpar').onclick = limparFiltros;
-        document.getElementById('eproc-filtro-data-inicio').onchange = aplicarFiltrosEAplicar;
-        document.getElementById('eproc-filtro-data-fim').onchange = aplicarFiltrosEAplicar;
-
-        // Date presets
-        document.querySelectorAll('#eproc-date-presets span').forEach(function (el) {
-            el.onclick = function () {
-                document.querySelectorAll('#eproc-date-presets span').forEach(function (s) { s.classList.remove('active'); });
-                this.classList.add('active');
-                aplicarPresetData(this.dataset.preset);
+        if (statsArea) {
+            statsArea.onmouseenter = mostrarTooltip;
+            statsArea.onmouseleave = function () {
+                var tip = document.getElementById('eproc-tooltip');
+                if (tip) tip.style.display = 'none';
             };
-        });
-
-        // Metrica toggle
-        var btnMetrica = document.getElementById('eproc-metrica-toggle');
-        if (btnMetrica) {
-            btnMetrica.onclick = function () {
-                state.metricaAtiva = (state.metricaAtiva === 'processos') ? 'execucoes' : 'processos';
-                atualizarBotaoMetrica();
-                if (state.dadosFiltrados) {
-                    renderDashboard();
-                }
-            };
+        } else {
+            adicionarLog('§ BIND FALHOU: #eproc-stats-area n\u00e3o encontrado', 'error');
         }
 
-        // Order toggle
-        document.querySelectorAll('.fs-ord-toggle span').forEach(function (el) {
-            el.onclick = function () {
-                document.querySelectorAll('.fs-ord-toggle span').forEach(function (s) { s.classList.remove('active'); });
-                this.classList.add('active');
-                state.filters.ordenacao = this.dataset.ordem;
-                if (state.dadosFiltrados) renderDashboard();
+        // Tabela & modal de historico
+        bindEl('eproc-pl-close', 'onclick', function () {
+            document.getElementById('eproc-processos-overlay').classList.remove('active');
+        });
+        
+        var histInput = document.getElementById('eproc-hist-input');
+        var histSearch = document.getElementById('eproc-hist-search');
+        var btnHistProc = document.getElementById('eproc-btn-hist-proc');
+
+        if (btnHistProc && histInput && histSearch) {
+            btnHistProc.onclick = function() {
+                var showing = histInput.style.display !== 'none';
+                histInput.style.display = showing ? 'none' : 'inline-block';
+                histSearch.style.display = showing ? 'none' : 'inline-block';
+                if (!showing) {
+                    histInput.value = '';
+                    histInput.focus();
+                }
             };
+        } else {
+            adicionarLog('§ BIND FALHOU: #eproc-btn-hist-proc e dependentes', 'error');
+        }
+        bindEl('eproc-hist-close', 'onclick', function() {
+            var o = document.getElementById('eproc-hist-overlay');
+            if (o) o.classList.remove('active');
+        });
+        bindEl('eproc-hist-search', 'onclick', buscarHistoricoProcessoInline);
+        (function() {
+            var el = document.getElementById('eproc-hist-input');
+            if (el) {
+                el.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') buscarHistoricoProcessoInline();
+                });
+            }
+        })();
+
+        // Footer buttons
+
+        // Footer buttons
+        bindEl('eproc-btn-export-json', 'onclick', function() {
+            if (!state.dadosBrutos) { alert('Nenhum dado para exportar.'); return; }
+            var blob = new Blob([JSON.stringify(state.dadosBrutos, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'eproc-dados-export-' + hojeISO() + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+        bindEl('eproc-btn-import-json', 'onclick', function() {
+            var input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                var file = e.target.files[0];
+                if (!file) return;
+                var reader = new FileReader();
+                reader.onload = function(ev) {
+                    try {
+                        var imported = JSON.parse(ev.target.result);
+                        if (!imported || !imported.logs) { alert('Arquivo inválido.'); return; }
+                        if (!state.dadosBrutos) {
+                            state.dadosBrutos = imported;
+                        } else {
+                            var idsExistentes = new Set((state.dadosBrutos.logs || []).map(function(l) { return l[0]; }));
+                            (imported.logs || []).forEach(function(l) {
+                                if (!idsExistentes.has(l[0])) {
+                                    state.dadosBrutos.logs.push(l);
+                                    idsExistentes.add(l[0]);
+                                }
+                            });
+                            var regrasExistentes = new Set((state.dadosBrutos.regras || []).map(function(r) { return r[0]; }));
+                            (imported.regras || []).forEach(function(r) {
+                                if (!regrasExistentes.has(r[0])) {
+                                    state.dadosBrutos.regras.push(r);
+                                    regrasExistentes.add(r[0]);
+                                }
+                            });
+                        }
+                        processarDadosHelper(state.dadosBrutos);
+                        if (state.tabAtiva === 'relatorios') mostrarDashboard();
+                        adicionarLog('Dados importados: ' + (imported.logs || []).length + ' logs', 'success');
+                    } catch (err) {
+                        alert('Erro ao importar: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        });
+        bindEl('eproc-btn-limpar-base', 'onclick', function() {
+            if (confirm('Tem certeza que deseja limpar toda a base de logs local?')) {
+                state.dadosBrutos = null;
+                if (PERFIL_ATUAL) GM_setValue('ultimaExtracao_' + PERFIL_ATUAL, null);
+                GM_setValue('eprocLogsRawData', null); // ou o banco supabase
+                alert('Base local limpa.');
+                location.reload();
+            }
+        });
+
+        // ---- BIND DASHBOARD FILTERS ----
+        bindEl('eproc-btn-limpar', 'onclick', limparFiltros);
+        bindEl('eproc-filtro-data-inicio', 'onchange', aplicarFiltrosEAplicar);
+        bindEl('eproc-filtro-data-fim', 'onchange', aplicarFiltrosEAplicar);
+        rebindFiltros();
+
+        // Date presets
+        (function() {
+            var els = document.querySelectorAll('#eproc-date-presets span');
+            if (!els.length) { adicionarLog('§ BIND FALHOU: "#eproc-date-presets span" sem matches', 'error'); return; }
+            els.forEach(function (el) {
+                el.onclick = function () {
+                    document.querySelectorAll('#eproc-date-presets span').forEach(function (s) { s.classList.remove('active'); });
+                    this.classList.add('active');
+                    aplicarPresetData(this.dataset.preset);
+                };
+            });
+        })();
+
+        // Metrica toggle
+        (function() {
+            var el = document.getElementById('eproc-metrica-toggle');
+            if (el) {
+                el.onclick = function () {
+                    state.metricaAtiva = (state.metricaAtiva === 'processos') ? 'execucoes' : 'processos';
+                    atualizarBotaoMetrica();
+                    if (state.dadosFiltrados) {
+                        renderDashboard();
+                    }
+                };
+            } else {
+                adicionarLog('§ BIND FALHOU: #eproc-metrica-toggle n\u00e3o encontrado', 'error');
+            }
+        })();
+
+        // Order toggle
+        bindAll('.fs-ord-toggle span', 'onclick', function () {
+            document.querySelectorAll('.fs-ord-toggle span').forEach(function (s) { s.classList.remove('active'); });
+            this.classList.add('active');
+            state.filters.ordenacao = this.dataset.ordem;
+            if (state.dadosFiltrados) renderDashboard();
         });
 
         // Pie dimension buttons
-        document.querySelectorAll('#pie-dims span').forEach(function (el) {
-            el.onclick = function () {
-                document.querySelectorAll('#pie-dims span').forEach(function (s) { s.classList.remove('active'); });
-                this.classList.add('active');
-                state.filters.pieDimensao = this.dataset.dim;
-                if (state.dadosFiltrados) renderDashboard();
-            };
+        bindAll('#pie-dims span', 'onclick', function () {
+            document.querySelectorAll('#pie-dims span').forEach(function (s) { s.classList.remove('active'); });
+            this.classList.add('active');
+            state.filters.pieDimensao = this.dataset.dim;
+            if (state.dadosFiltrados) renderDashboard();
         });
 
         // Glossary select
-        document.getElementById('eproc-glossario-select').onchange = function () {
+        bindEl('eproc-glossario-select', 'onchange', function () {
             mostrarGlossario(this.value);
-        };
+        });
 
         // Table search
-        document.getElementById('eproc-tabela-busca').oninput = function () {
+        bindEl('eproc-tabela-busca', 'oninput', function () {
             renderTabela(state.dadosFiltrados);
-        };
+        });
 
         // Table sort
-        document.querySelectorAll('#eproc-data-table thead th').forEach(function (th) {
+        (function() {
+            var els = document.querySelectorAll('#eproc-data-table thead th');
+            if (!els.length) { adicionarLog('§ BIND FALHOU: "#eproc-data-table thead th" sem matches', 'error'); return; }
+            els.forEach(function (th) {
             th.onclick = function () {
                 var sortKey = this.dataset.sort;
                 if (!sortKey) return;
@@ -1231,13 +1446,14 @@
                 state.tabelaSort = sortKey;
                 renderTabela(state.dadosFiltrados);
             };
-        });
+            });
+        })();
 
         // XLSX button
-        document.getElementById('eproc-btn-xlsx').onclick = exportarXLSX;
+        bindEl('eproc-btn-xlsx', 'onclick', exportarXLSX);
 
-        // Processos button
-        document.getElementById('eproc-btn-processos').onclick = function () {
+        // Processos button (replaces overlay version)
+        bindEl('eproc-btn-processos', 'onclick', function () {
             var overlay = document.getElementById('eproc-processos-overlay');
             if (overlay && overlay.classList.contains('active')) {
                 state.exibirProcessos = false;
@@ -1250,28 +1466,23 @@
                     abrirListaProcessos();
                 }
             }
-        };
-
-        // PNG buttons
-        document.querySelectorAll('.btn-chart-png').forEach(function (btn) {
-            btn.onclick = function () {
-                var chartId = this.dataset.chart;
-                baixarChartPNG(chartId);
-            };
+        });
+        bindAll('.btn-chart-png', 'onclick', function () {
+            baixarChartPNG(this.dataset.chart);
         });
 
         // Retry button
-        document.getElementById('eproc-rel-retry').onclick = function () {
+        bindEl('eproc-rel-retry', 'onclick', function () {
             buscarDadosAPI(true);
-        };
+        });
 
         // Botão de atualizar manual no topo da aba Relatórios
-        document.getElementById('eproc-btn-sync-manual').onclick = function () {
+        bindEl('eproc-btn-sync-manual', 'onclick', function () {
             buscarDadosAPI(true);
-        };
+        });
 
         // Delegação de clique para visualizar processos da linha cronologicamente (+x)
-        document.getElementById('eproc-table-body').onclick = function (e) {
+        bindEl('eproc-table-body', 'onclick', function (e) {
             var target = e.target;
             if (target && target.classList.contains('ver-mais-processos')) {
                 var regra = target.dataset.regra;
@@ -1281,7 +1492,7 @@
                     abrirListaProcessosDaLinha(linha.regra, linha.processos);
                 }
             }
-        };
+        });
 
         // Extrair dados - auto search
         var n = extrairRegras().length;
@@ -1320,13 +1531,13 @@
     // STATUS BADGE
     // ================================================================
     function atualizarStatusExtracao() {
+        if (!PERFIL_ATUAL) return 'desatualizado';
         var ultima = state.ultimaExtracao;
         if (!ultima) return 'desatualizado';
-        var hoje = new Date();
-        var hStr = hoje.getFullYear() + '-' + hoje.getMonth() + '-' + hoje.getDate();
+        var agora = new Date();
         var ult = new Date(ultima);
-        var uStr = ult.getFullYear() + '-' + ult.getMonth() + '-' + ult.getDate();
-        return hStr === uStr ? 'ativos' : 'desatualizado';
+        var diffMin = (agora - ult) / 60000;
+        return diffMin < 30 ? 'ativos' : 'desatualizado';
     }
 
     function atualizarBadgeExtracao() {
@@ -1391,6 +1602,8 @@
         var eExtraidos = document.getElementById('eproc-stat-extraidos');
         var eNovos = document.getElementById('eproc-stat-novos');
         var eIgnorados = document.getElementById('eproc-stat-ignorados');
+        var eDuplicados = document.getElementById('eproc-stat-duplicados');
+        var eErros = document.getElementById('eproc-stat-erros');
         var eErrosFetch = document.getElementById('eproc-stat-erros-fetch');
         var eErrosFlush = document.getElementById('eproc-stat-erros-flush');
         var eEta = document.getElementById('eproc-stat-eta');
@@ -1399,6 +1612,8 @@
         if (eExtraidos) eExtraidos.textContent = state.stats.logsExtraidos;
         if (eNovos) eNovos.textContent = state.stats.logsNovos;
         if (eIgnorados) eIgnorados.textContent = state.stats.logsIgnorados;
+        if (eDuplicados) eDuplicados.textContent = state.stats.logsDuplicados;
+        if (eErros) eErros.textContent = state.stats.erros;
         if (eErrosFetch) eErrosFetch.textContent = state.stats.errosFetch;
         if (eErrosFlush) eErrosFlush.textContent = state.stats.errosFlush;
         if (eEta && state.stats.regrasProcessadas > 0 && state.stats.regrasProcessadas < total) {
@@ -1838,7 +2053,7 @@
         if (regras.length === 0) { adicionarLog('Nenhuma regra!', 'error'); state.processando = false; state.silentMode = false; if (!state.silentMode) { btn.textContent = '▶ Importar Logs'; btn.className = 'primary'; } return; }
         state.stats.regrasTotal = regras.length;
         state.stats.regrasProcessadas = 0;
-        state.stats.logsExtraidos = 0; state.stats.logsNovos = 0; state.stats.logsIgnorados = 0; state.stats.erros = 0; state.stats.errosFetch = 0; state.stats.errosFlush = 0;
+        state.stats.logsExtraidos = 0; state.stats.logsNovos = 0; state.stats.logsIgnorados = 0; state.stats.logsDuplicados = 0; state.stats.erros = 0; state.stats.errosFetch = 0; state.stats.errosFlush = 0;
         state.stats.inicio = Date.now(); state.stats.temposRegra = []; state.stats.porRegra = {};
         state.regrasPendentes = regras.slice();
         state.idsEnviados = new Set();
@@ -1868,6 +2083,8 @@
                     // Duplicados do banco são tratados pelo Upsert (on_conflict=id)
                     if (!state.idsEnviados.has(id)) {
                         log.id = id; state.logsBuffer.push(log); state.idsEnviados.add(id);
+                    } else {
+                        state.stats.logsDuplicados++;
                     }
                 }
                 if (state.logsBuffer.length >= CONFIG.batchSize) await flushBuffer();
@@ -1903,15 +2120,16 @@
         }
         // Atualiza status
         state.ultimaExtracao = new Date().toISOString();
-        GM_setValue('ultimaExtracao', state.ultimaExtracao);
+        if (PERFIL_ATUAL) {
+            GM_setValue('ultimaExtracao_' + PERFIL_ATUAL, state.ultimaExtracao);
+        }
         atualizarBadgeExtracao();
 
         // Background sync + refresh Relatórios if active
-        buscarDadosAPI(true, true).then(function () {
-            if (state.tabAtiva === 'relatorios') {
-                mostrarDashboard();
-            }
-        });
+        await buscarDadosAPI(true, true);
+        if (state.tabAtiva === 'relatorios') {
+            mostrarDashboard();
+        }
     }
 
     // ================================================================
@@ -2078,7 +2296,7 @@
             });
         }
         var grupoSelect = document.getElementById('eproc-filtro-grupo');
-        var gruposArr = Array.from(grupos).sort();
+        var gruposArr = Array.from(grupos).sort(function(a, b) { return a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}); });
         grupoSelect.innerHTML = '<option value="todos">Todos</option>' +
             gruposArr.map(function (g) { return '<option value="' + escHTML(g) + '">' + escHTML(g) + '</option>'; }).join('');
 
@@ -2111,14 +2329,167 @@
         glossSelect.innerHTML = '<option value="">Selecione uma regra...</option>' +
             regrasAuto.map(function (r) { return '<option value="' + escHTML(r) + '">Regra ' + escHTML(r) + '</option>'; }).join('');
 
+        renderizarRegrasParalisadas(dados);
+
         // Update badge
         if (dados.logs) {
             var badge = document.getElementById('eproc-rel-badge');
             if (badge) badge.textContent = fmtNumero(dados.logs.length);
         }
+        rebindFiltros();
+    }
+
+    function renderizarRegrasParalisadas(dados) {
+        var container = document.getElementById('eproc-regras-paralisadas');
+        if (!container) return;
+        if (!dados.regras || !dados.logs) {
+            container.innerHTML = '';
+            return;
+        }
+
+        var ultimaExecPorRegra = {};
+        dados.logs.forEach(function (log) {
+            var r = String(log[4] || log.regra || '').trim();
+            var dataStr = log[2] || log.data;
+            if (!r || !dataStr) return;
+            var partesStr = dataStr.split(' ');
+            var dtStr = partesStr[0];
+            if (dtStr.indexOf('/') !== -1) {
+                var p = dtStr.split('/');
+                dtStr = p[2] + '-' + p[1] + '-' + p[0];
+            }
+            var tStr = partesStr[1] || '00:00:00';
+            var dt = new Date(dtStr + 'T' + tStr);
+            if (isNaN(dt)) return;
+            if (!ultimaExecPorRegra[r] || dt > ultimaExecPorRegra[r]) {
+                ultimaExecPorRegra[r] = dt;
+            }
+        });
+
+        var paralisadas = [];
+        var hoje = new Date();
+        dados.regras.forEach(function (regraData) {
+            var r = String(regraData[0]).trim();
+            if (!r) return;
+            var ultDate = ultimaExecPorRegra[r];
+            if (!ultDate) return;
+            
+            var diffMs = hoje - ultDate;
+            var diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+            if (diffDias >= 5) {
+                paralisadas.push({
+                    regra: r,
+                    grupo: String(regraData[1]).trim(),
+                    dias: diffDias
+                });
+            }
+        });
+
+        if (paralisadas.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        paralisadas.sort(function(a, b) { return b.dias - a.dias; });
+
+        var html = '<div class="rg-paral">' +
+                   '<div class="rg-paral-title">Regras Paralisadas <span class="rg-paral-badge">' + paralisadas.length + '</span></div>' +
+                   '<div class="rg-paral-list">';
+        
+        paralisadas.forEach(function(p) {
+            html += '<div class="rg-paral-item">' +
+                    '<div class="rg-paral-left">Regra ' + escHTML(p.regra) + '<span>' + escHTML(p.grupo) + '</span></div>' +
+                    '<div class="rg-paral-right">' + p.dias + ' Dias</div>' +
+                    '</div>';
+        });
+
+        html += '</div></div>';
+        container.innerHTML = html;
+    }
+
+    function getGrupoColor(nome) {
+        var cores = [
+            { dark: '#58a6ff', light: '#0f62fe' },
+            { dark: '#3fb950', light: '#16a34a' },
+            { dark: '#f79939', light: '#ea580c' },
+            { dark: '#f778ba', light: '#db2777' },
+            { dark: '#bc8cff', light: '#7c3aed' },
+            { dark: '#56d4dd', light: '#0891b2' },
+            { dark: '#f85149', light: '#dc2626' },
+            { dark: '#d29922', light: '#ca8a04' },
+        ];
+        var hash = 0;
+        for (var i = 0; i < nome.length; i++) hash = ((hash << 5) - hash) + nome.charCodeAt(i);
+        return cores[Math.abs(hash) % cores.length];
+    }
+
+    function buscarHistoricoProcessoInline() {
+        var input = document.getElementById('eproc-hist-input');
+        if (!input) return;
+        var query = input.value.trim().replace(/[.\-]/g, '').toLowerCase();
+        if (!query) return;
+        var overlay = document.getElementById('eproc-hist-overlay');
+        var resDiv = document.getElementById('eproc-hist-results');
+        if (!resDiv || !overlay) return;
+        if (!state.dadosBrutos || !state.dadosBrutos.logs) {
+            resDiv.innerHTML = '<div class="hr-total">Nenhum dado bruto dispon\u00EDvel.</div>';
+            overlay.classList.add('active');
+            return;
+        }
+
+        var encontrados = [];
+        var primeiroProc = '';
+        state.dadosBrutos.logs.forEach(function(l) {
+            var proc = String(l[1] || l.processo || '');
+            var procNorm = proc.replace(/[.\-]/g, '').trim().toLowerCase();
+            if (procNorm.indexOf(query) !== -1) {
+                encontrados.push({ log: l, proc: proc });
+                if (!primeiroProc) primeiroProc = proc.trim();
+            }
+        });
+
+        if (encontrados.length === 0) {
+            resDiv.innerHTML = '<div class="hr-total">Nenhuma execu\u00E7\u00E3o encontrada para: ' + escHTML(input.value.trim()) + '</div>';
+            overlay.classList.add('active');
+            return;
+        }
+
+        encontrados.sort(function(a, b) {
+            var dtA = new Date((a.log[2] || a.log.data || '').replace(' ', 'T'));
+            var dtB = new Date((b.log[2] || b.log.data || '').replace(' ', 'T'));
+            if (isNaN(dtA)) dtA = new Date(0);
+            if (isNaN(dtB)) dtB = new Date(0);
+            return dtB - dtA;
+        });
+
+        var html = '<div class="hr-total">Total de execu\u00E7\u00F5es: ' + encontrados.length + ' &mdash; <span class="hl-proc">' + escHTML(primeiroProc) + '</span></div>';
+        html += '<table><thead><tr><th style="width:28%">Data</th><th style="width:24%">Regra</th><th style="width:48%">Grupo</th></tr></thead><tbody>';
+        encontrados.forEach(function(e) {
+            var l = e.log;
+            var regra = String(l[4] || l.regra || '').trim();
+            var dataVal = l[2] || l.dataOnly || l.data || '';
+            var horaVal = l[3] || l.hora || '';
+            var dataFormatada = fmtDataBR(dataVal);
+            var horaFormatada = fmtHoraBR(horaVal);
+            var dataHora = (dataFormatada && horaFormatada) ? (dataFormatada + ' \u00E0s ' + horaFormatada) : (dataFormatada || horaFormatada || '\u2014');
+            var rInfo = state.regrasMap.get(regra) || {};
+            var grupo = rInfo.grupo || '-';
+            var cor = getGrupoColor(grupo);
+            var corDark = state.darkMode ? cor.dark : cor.light;
+            html += '<tr>' +
+                    '<td class="col-data">' + escHTML(dataHora) + '</td>' +
+                    '<td class="col-regra" style="color:' + corDark + '">' + escHTML(regra) + '</td>' +
+                    '<td><span class="grupo-badge" style="background:' + corDark + '1a;color:' + corDark + '">' + escHTML(grupo) + '</span></td>' +
+                    '</tr>';
+        });
+        html += '</tbody></table>';
+
+        resDiv.innerHTML = html;
+        overlay.classList.add('active');
     }
 
     function aplicarPresetData(preset) {
+        try {
         var autoRender = state.dadosFiltrados ? true : false;
         var hoje = new Date();
         var inicio = new Date();
@@ -2158,6 +2529,7 @@
         state.presetAtivo = preset;
         atualizarDropdownsPorFiltros();
         if (autoRender) renderDashboard();
+        } catch (e) { adicionarLog('Erro aplicarPresetData: ' + e.message, 'error'); }
     }
 
     // ================================================================
@@ -2235,22 +2607,38 @@
         }
     }
 
+    function rebindFiltros() {
+        var el = document.getElementById('eproc-filtro-grupo');
+        if (el) el.onchange = function () {
+            state.filters.grupo = this.value;
+            atualizarDropdownsPorFiltros();
+            if (state.dadosFiltrados) renderDashboard();
+        };
+        el = document.getElementById('eproc-filtro-regra');
+        if (el) el.onchange = function () {
+            state.filters.regra = this.value;
+            if (state.dadosFiltrados) renderDashboard();
+        };
+    }
+
     function aplicarFiltrosEAplicar() {
         if (!state.dadosBrutos) return;
-        // Read filter values
+        try {
         var dataInicioVal = document.getElementById('eproc-filtro-data-inicio').value;
         var dataFimVal = document.getElementById('eproc-filtro-data-fim').value;
         state.filters.dataInicio = dataInicioVal ? new Date(dataInicioVal + 'T00:00:00') : null;
         state.filters.dataFim = dataFimVal ? new Date(dataFimVal + 'T23:59:59') : null;
         state.filters.grupo = document.getElementById('eproc-filtro-grupo').value;
         state.filters.regra = document.getElementById('eproc-filtro-regra').value;
-        state.filters.processo = document.getElementById('eproc-filtro-processo').value.trim().toLowerCase();
+        state.filters.processo = document.getElementById('eproc-filtro-processo').value.replace(/[.\-]/g, '').trim().toLowerCase();
 
         atualizarDropdownsPorFiltros();
         renderDashboard();
+        } catch (e) { adicionarLog('Erro aplicarFiltros: ' + e.message, 'error'); }
     }
 
     function limparFiltros() {
+        try {
         document.getElementById('eproc-filtro-data-inicio').value = '';
         document.getElementById('eproc-filtro-data-fim').value = '';
         document.getElementById('eproc-filtro-grupo').value = 'todos';
@@ -2272,6 +2660,7 @@
         state.presetAtivo = 'tudo';
         atualizarDropdownsPorFiltros();
         renderDashboard();
+        } catch (e) { adicionarLog('Erro limparFiltros: ' + e.message, 'error'); }
     }
 
     function filtrarDados() {
@@ -2305,7 +2694,7 @@
             if (f.processo) {
                 var query = f.processo.trim().toLowerCase();
                 if (query) {
-                    var proc = String(log[1] || log.processo || '').toLowerCase();
+                    var proc = String(log[1] || log.processo || '').replace(/[.\-]/g, '').toLowerCase();
                     var matchProc = proc.indexOf(query) !== -1;
                     if (!matchProc) return false;
                 }
@@ -2326,14 +2715,13 @@
         if (!btn) return;
         if (state.metricaAtiva === 'processos') {
             btn.textContent = 'Processos impactados';
-            btn.style.color = '#3fb950';
         } else {
             btn.textContent = 'Execuções';
-            btn.style.color = '#58a6ff';
         }
     }
 
     function renderDashboard() {
+        try {
         atualizarBotaoMetrica();
         var dadosFiltrados = filtrarDados();
         if (!dadosFiltrados || dadosFiltrados.length === 0) {
@@ -2453,14 +2841,14 @@
                 if (qtdAnterior > 0) {
                     var delta = Math.round((totalExec - qtdAnterior) / qtdAnterior * 100);
                     if (delta > 0) {
-                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#3fb950">+' + delta + '%</strong> comparado ao mesmo período anterior';
+                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#3fb950">▲ +' + delta + '%</strong> comparado ao período anterior';
                     } else if (delta < 0) {
-                        document.getElementById('kpi-exec-delta').innerHTML = delta + '% comparado ao mesmo período anterior';
+                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#f85149">▼ ' + delta + '%</strong> comparado ao período anterior';
                     } else {
-                        document.getElementById('kpi-exec-delta').innerHTML = '0% comparado ao mesmo período anterior';
+                        document.getElementById('kpi-exec-delta').innerHTML = '0% comparado ao período anterior';
                     }
                 } else if (totalExec > 0) {
-                    document.getElementById('kpi-exec-delta').innerHTML = 'Sem dados de comparação no período anterior';
+                    document.getElementById('kpi-exec-delta').innerHTML = '';
                 }
 
                 var procAnterior = new Set(logsAnteriores.map(function (l) { return l[1] || l.processo; })).size;
@@ -2468,14 +2856,14 @@
                 if (procAnterior > 0) {
                     var deltaProc = Math.round((totalProc - procAnterior) / procAnterior * 100);
                     if (deltaProc > 0) {
-                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#3fb950">+' + deltaProc + '%</strong> comparado ao mesmo período anterior';
+                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#3fb950">▲ +' + deltaProc + '%</strong> comparado ao período anterior';
                     } else if (deltaProc < 0) {
-                        document.getElementById('kpi-proc-delta').innerHTML = deltaProc + '% comparado ao mesmo período anterior';
+                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#f85149">▼ ' + deltaProc + '%</strong> comparado ao período anterior';
                     } else {
-                        document.getElementById('kpi-proc-delta').innerHTML = '0% comparado ao mesmo período anterior';
+                        document.getElementById('kpi-proc-delta').innerHTML = '0% comparado ao período anterior';
                     }
                 } else if (totalProc > 0) {
-                    document.getElementById('kpi-proc-delta').innerHTML = 'Sem dados de comparação no período anterior';
+                    document.getElementById('kpi-proc-delta').innerHTML = '';
                 }
             }
         }
@@ -2489,6 +2877,7 @@
 
         // Table
         renderTabela(dadosFiltrados);
+        } catch (e) { adicionarLog('Erro renderDashboard: ' + e.message, 'error'); }
     }
 
     // ================================================================
@@ -2689,6 +3078,7 @@
     }
 
     function renderChartTemporal(dados) {
+        try {
         var canvas = document.getElementById('chart-temporal');
         if (state.chartInstances.temporal) state.chartInstances.temporal.destroy();
         if (!canvas || dados.length === 0) return;
@@ -2801,9 +3191,11 @@
                 }
             }]
         });
+        } catch (e) { adicionarLog('Erro renderChartTemporal: ' + e.message, 'error'); }
     }
 
     function renderChartDistrib(dados) {
+        try {
         var canvas = document.getElementById('chart-distrib');
         if (state.chartInstances.distrib) state.chartInstances.distrib.destroy();
         if (!canvas || dados.length === 0) return;
@@ -2907,9 +3299,11 @@
                 }
             }]
         });
+        } catch (e) { adicionarLog('Erro renderChartDistrib: ' + e.message, 'error'); }
     }
 
     function renderChartTop(dados) {
+        try {
         var canvas = document.getElementById('chart-top');
         if (state.chartInstances.top) state.chartInstances.top.destroy();
         if (!canvas || dados.length === 0) return;
@@ -2942,12 +3336,6 @@
             entries.sort(function (a, b) { return b[1] - a[1]; });
         } else if (state.filters.ordenacao === 'frequencia-asc') {
             entries.sort(function (a, b) { return a[1] - b[1]; });
-        } else if (state.filters.ordenacao === 'cronologica') {
-            entries.sort(function (a, b) {
-                var da = maxDatePorRegra[a[0]] || '';
-                var db = maxDatePorRegra[b[0]] || '';
-                return db.localeCompare(da);
-            });
         } else {
             entries.sort(function (a, b) {
                 var na = parseInt(a[0].replace(/\D/g, '')) || 0;
@@ -3049,12 +3437,14 @@
                 }
             }]
         });
+        } catch (e) { adicionarLog('Erro renderChartTop: ' + e.message, 'error'); }
     }
 
     // ================================================================
     // TABLE
     // ================================================================
     function renderTabela(dados) {
+        try {
         var tbody = document.getElementById('eproc-table-body');
         if (!tbody) return;
         var busca = (document.getElementById('eproc-tabela-busca').value || '').toLowerCase();
@@ -3172,6 +3562,7 @@
                 renderTabela(dados);
             };
         });
+        } catch (e) { adicionarLog('Erro renderTabela: ' + e.message, 'error'); }
     }
 
     // ================================================================
@@ -3346,16 +3737,25 @@
             ['Gerado em: ' + new Date().toLocaleString('pt-BR')],
             [],
             ['MÉTRICAS GLOBAIS DE DESEMPENHO'],
-            ['Indicador / Métrica', '', ''],
             ['Período de Análise', (state.filters.dataInicio ? fmtDataBR(state.filters.dataInicio).split(' ')[0] : 'Início') + ' a ' + (state.filters.dataFim ? fmtDataBR(state.filters.dataFim).split(' ')[0] : 'Fim'), ''],
             ['Total de Execuções', parseInt(document.getElementById('kpi-exec').textContent.replace(/\./g, '')) || 0, deltaExec || 'Sem dados de variação'],
             ['Média de Execuções / Dia', parseInt(document.getElementById('kpi-media-exec').textContent.replace(/\./g, '')) || 0, ''],
             ['Total de Processos Impactados', parseInt(document.getElementById('kpi-proc').textContent.replace(/\./g, '')) || 0, deltaProc || 'Sem dados de variação'],
-            ['Média de Processos / Dia', parseInt(document.getElementById('kpi-media-proc').textContent.replace(/\./g, '')) || 0, ''],
-            [],
-            ['DISTRIBUIÇÃO ANALÍTICA POR GRUPO DE REGRA'],
-            ['Grupo de Regra', 'Execuções', 'Processos Impactados']
+            ['Média de Processos / Dia', parseInt(document.getElementById('kpi-media-proc').textContent.replace(/\./g, '')) || 0, '']
         ];
+
+        var procAg = {};
+        dados.forEach(function (l) {
+            var proc = l[1] || l.processo || '';
+            if (proc) {
+                procAg[proc] = (procAg[proc] || 0) + 1;
+            }
+        });
+        var procsSorted = Object.entries(procAg).sort(function (a, b) { return b[1] - a[1]; });
+        
+        dataRel.push([]);
+        dataRel.push(['DISTRIBUIÇÃO ANALÍTICA POR GRUPO DE REGRA']);
+        dataRel.push(['Grupo de Regra', 'Execuções', 'Processos Impactados']);
         var gruposAg = {};
         dados.forEach(function (l) {
             var ri = state.regrasMap.get(String(l[4] || l.regra || '').trim()) || {};
@@ -3385,6 +3785,20 @@
         });
         Object.entries(regrasAg).sort(function (a, b) { return b[1].exec - a[1].exec; }).forEach(function (e) {
             dataRel.push([e[0], e[1].exec, e[1].procs.size]);
+        });
+
+        dataRel.push([]);
+        dataRel.push(['TOP 10 PROCESSOS COM MAIS EXECUÇÕES']);
+        dataRel.push(['Processo', 'Execuções', '']);
+        procsSorted.slice(0, 10).forEach(function (e) {
+            dataRel.push([e[0], e[1], '']);
+        });
+
+        dataRel.push([]);
+        dataRel.push(['TOP 10 PROCESSOS COM MENOS EXECUÇÕES']);
+        dataRel.push(['Processo', 'Execuções', '']);
+        procsSorted.slice(-10).reverse().forEach(function (e) {
+            dataRel.push([e[0], e[1], '']);
         });
 
         var wsRel = XLSX.utils.aoa_to_sheet(dataRel);
@@ -3512,6 +3926,11 @@
     }
 
     aguardarJQuery(async function () {
+        if (!PERFIL_ATUAL) {
+            alert('Erro: O painel Eproc Logs não conseguiu identificar o seu perfil de usuário atual. A extração foi bloqueada para evitar inconsistências. Por favor, recarregue a página ou verifique sua lotação.');
+            return;
+        }
+
         criarUI();
 
         // Verifica paginacao e exibe alerta se necessario
@@ -3521,9 +3940,49 @@
         adicionarLog(n + ' regras encontradas na pagina', 'info');
 
         // Auto-import silencioso se estiver desatualizado
-        if (atualizarStatusExtracao() === 'desatualizado') {
-            state.silentMode = true;
-            iniciarImportacao();
+        try {
+            if (atualizarStatusExtracao() === 'desatualizado') {
+                state.silentMode = true;
+                iniciarImportacao();
+            }
+        } catch (e) {
+            adicionarLog('[auto] Erro ao iniciar extra\u00E7\u00E3o autom\u00E1tica: ' + e.message, 'error');
+        }
+
+        // Processa dados pr\u00E9-carregados em segundo plano
+        if (_earlyDadosPromise) {
+            _earlyDadosPromise.then(function (dados) {
+                _earlyDadosPromise = null;
+                if (dados) processarDadosHelper(dados);
+            }).catch(function () {
+                _earlyDadosPromise = null;
+            });
+        }
+
+        // Verifica a cada 60s se passou 30min sem extrair
+        setInterval(function() {
+            if (!state.processando && atualizarStatusExtracao() === 'desatualizado') {
+                state.silentMode = true;
+                iniciarImportacao();
+            }
+        }, 60000);
+
+        // Detecta troca de perfil (dropdown de lota\u00E7\u00E3o)
+        var selLotacao = document.getElementById('selLotacao');
+        if (selLotacao) {
+            selLotacao.addEventListener('change', function() {
+                var novoPerfil = detectarPerfilUsuario();
+                if (novoPerfil && novoPerfil !== PERFIL_ATUAL) {
+                    PERFIL_ATUAL = novoPerfil;
+                    state.perfilAtual = novoPerfil;
+                    state.ultimaExtracao = GM_getValue('ultimaExtracao_' + novoPerfil, null);
+                    atualizarBadgeExtracao();
+                    if (!state.processando && atualizarStatusExtracao() === 'desatualizado') {
+                        state.silentMode = true;
+                        iniciarImportacao();
+                    }
+                }
+            });
         }
 
         // Processa dados pré-carregados em segundo plano
