@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projeto LogsEproc
 // @namespace    https://eproc1g.tjmg.jus.br
-// @version      6.0
+// @version      6.2
 // @description  Extrai logs de todas as regras de automatizacao do EPROC + Dashboard BI
 // @author       Allison de Castro Silva
 // @updateURL    https://github.com/AllisondeCastro/Projeto-LogsEproc/raw/refs/heads/main/eproc-log-importer.user.js
@@ -612,16 +612,17 @@
         '#eproc-dashboard .filter-sidebar .fs-ord-toggle span { flex:1; text-align:center; padding:5px; border-radius:5px; font-size:9px; cursor:pointer; transition:all 0.15s; background:#21262d; color:#8b949e; }',
         '#eproc-dashboard .filter-sidebar .fs-ord-toggle span.active { background:#1f6feb33; color:#58a6ff; font-weight:600; }',
         '#eproc-dashboard .rg-paral { margin-top:12px; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:8px; }',
-        '#eproc-dashboard .rg-paral-title { display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:600; color:#e6edf3; margin-bottom:6px; }',
+        '#eproc-dashboard .rg-paral-title { display:flex; justify-content:center; align-items:center; gap:6px; font-size:10px; font-weight:600; color:#e6edf3; margin-bottom:6px; }',
         '#eproc-dashboard .rg-paral-badge { background:#f8514933; color:#f85149; padding:1px 6px; border-radius:8px; font-size:9px; }',
-        '#eproc-dashboard .rg-paral-list { display:flex; flex-direction:column; gap:6px; max-height:150px; overflow-y:auto; }',
+        '#eproc-dashboard .rg-paral-list { display:flex; flex-direction:column; gap:6px; max-height:300px; overflow-y:auto; }',
         '#eproc-dashboard .rg-paral-list::-webkit-scrollbar { width:4px; }',
         '#eproc-dashboard .rg-paral-list::-webkit-scrollbar-thumb { background:#30363d; border-radius:2px; }',
-        '#eproc-dashboard .rg-paral-item { display:flex; justify-content:space-between; font-size:9px; border-bottom:1px solid #21262d; padding-bottom:4px; }',
-        '#eproc-dashboard .rg-paral-item:last-child { border-bottom:none; padding-bottom:0; }',
+        '#eproc-dashboard .rg-paral-item { display:flex; justify-content:space-between; font-size:9px; padding:4px 0; }',
+        '#eproc-dashboard .rg-paral-item:nth-child(even) { background:#1c2333; border-radius:4px; }',
         '#eproc-dashboard .rg-paral-left { display:flex; flex-direction:column; gap:2px; color:#c9d1d9; font-weight:500; }',
         '#eproc-dashboard .rg-paral-left span { color:#8b949e; font-size:8px; font-weight:400; }',
         '#eproc-dashboard .rg-paral-right { color:#8b949e; font-weight:600; }',
+        '#eproc-dashboard .rg-paral-ultima { display:block; font-size:8px; color:#8b949e; font-weight:400; margin-top:1px; }',
 
         /* Glossary */
         '#eproc-dashboard .glossary-box { margin-top:4px; background:#161b22; border:1px solid #30363d; border-radius:6px; padding:8px; font-size:10px; max-height:600px; overflow-y:auto; }',
@@ -657,6 +658,8 @@
         '#eproc-dashboard .btn-sober-gold:hover { background:rgba(210,153,34,0.12); }',
         '#eproc-dashboard.light-mode .btn-sober-gold { color:#475569; }',
         '#eproc-dashboard.light-mode .btn-sober-gold:hover { background:rgba(210,153,34,0.15); }',
+        '#eproc-dashboard #eproc-btn-export-json::before, #eproc-dashboard #eproc-btn-import-json::before, #eproc-dashboard #eproc-btn-hist-proc::before, #eproc-dashboard #eproc-btn-processos::before { display:none; }',
+        '#eproc-dashboard #eproc-btn-export-json, #eproc-dashboard #eproc-btn-import-json, #eproc-dashboard #eproc-btn-hist-proc, #eproc-dashboard #eproc-btn-processos { box-shadow:0 1px 3px rgba(0,0,0,0.15); }',
         '#eproc-dashboard .ver-mais-processos { color: #58a6ff; margin-left: 4px; }',
         '#eproc-dashboard .ver-mais-processos:hover { color: #c9d1d9; }',
 
@@ -849,6 +852,14 @@
         '#eproc-dashboard.light-mode .tab-refresh-btn:hover { color:#0f62fe !important; }',
         '#eproc-dashboard.light-mode .ver-mais-processos { color: #0f62fe; }',
         '#eproc-dashboard.light-mode .ver-mais-processos:hover { color: #0f172a; }',
+        '#eproc-dashboard.light-mode .rg-paral { background:#f8fafc; border-color:#e4e4e7; }',
+        '#eproc-dashboard.light-mode .rg-paral-title { color:#0f172a; }',
+        '#eproc-dashboard.light-mode .rg-paral-item:nth-child(even) { background:#f1f5f9; border-radius:4px; }',
+        '#eproc-dashboard.light-mode .rg-paral-left { color:#0f172a; }',
+        '#eproc-dashboard.light-mode .rg-paral-left span { color:#64748b; }',
+        '#eproc-dashboard.light-mode .rg-paral-right { color:#64748b; }',
+        '#eproc-dashboard.light-mode .rg-paral-ultima { color:#94a3b8; }',
+        '#eproc-dashboard.light-mode #eproc-btn-export-json, #eproc-dashboard.light-mode #eproc-btn-import-json, #eproc-dashboard.light-mode #eproc-btn-hist-proc, #eproc-dashboard.light-mode #eproc-btn-processos { box-shadow:0 1px 3px rgba(0,0,0,0.06); }',
     ].join('\n');
 
     function injectCSS() {
@@ -2061,9 +2072,9 @@
         // O banco de dados agora e o porteiro final via Primary Key (Upsert on_conflict=id).
         // Isso elimina o crescimento de RAM proporcional ao volume do banco.
         state.logsBuffer = [];
-        if (!state.silentMode) atualizarUI();
-        adicionarLog(regras.length + ' regras encontradas (todas as paginas)', 'info');
+        atualizarUI();
 
+        adicionarLog(regras.length + ' regras encontradas (todas as paginas)', 'info');
         try { await syncAutomatizacoes(regras); }
         catch (e) { adicionarLog('Erro sync regras: ' + e.message, 'error'); }
         for (var i = 0; i < regras.length; i++) {
@@ -2090,12 +2101,12 @@
                 if (state.logsBuffer.length >= CONFIG.batchSize) await flushBuffer();
             } catch (err) {
                 state.stats.errosFetch++; state.stats.erros++;
-                if (!state.silentMode) atualizarUI();
+                atualizarUI();
                 adicionarLog('R' + regra.numRegra + ' ERRO: ' + err.message, 'error');
             }
             state.stats.temposRegra.push(Date.now() - t0);
             state.stats.regrasProcessadas++;
-            if (!state.silentMode) atualizarUI();
+            atualizarUI();
         }
         if (state.logsBuffer.length > 0) await flushBuffer();
         var elapsed = fmtTempo(Date.now() - state.stats.inicio);
@@ -2380,7 +2391,8 @@
                 paralisadas.push({
                     regra: r,
                     grupo: String(regraData[1]).trim(),
-                    dias: diffDias
+                    dias: diffDias,
+                    ultimaExec: ultDate
                 });
             }
         });
@@ -2394,13 +2406,16 @@
 
         var html = '<div class="rg-paral">' +
                    '<div class="rg-paral-title">Regras Paralisadas <span class="rg-paral-badge">' + paralisadas.length + '</span></div>' +
+                   '<div style="font-size:8px;color:#8b949e;margin:0 0 6px 0">Não executadas há 5 dias ou mais</div>' +
                    '<div class="rg-paral-list">';
         
         paralisadas.forEach(function(p) {
             html += '<div class="rg-paral-item">' +
                     '<div class="rg-paral-left">Regra ' + escHTML(p.regra) + '<span>' + escHTML(p.grupo) + '</span></div>' +
-                    '<div class="rg-paral-right">' + p.dias + ' Dias</div>' +
-                    '</div>';
+                    '<div class="rg-paral-right">' + p.dias + ' Dias' +
+                    '<span class="rg-paral-ultima">Última: ' +
+                        (p.ultimaExec ? fmtDataBR(p.ultimaExec) : '—') +
+                    '</span></div></div>';
         });
 
         html += '</div></div>';
@@ -2503,19 +2518,20 @@
                 fim.setHours(23, 59, 59, 999);
                 break;
             case '7d':
-                inicio.setDate(hoje.getDate() - 7);
+                inicio.setDate(hoje.getDate() - 6);
                 break;
             case '15d':
-                inicio.setDate(hoje.getDate() - 15);
+                inicio.setDate(hoje.getDate() - 14);
                 break;
             case '30d':
-                inicio.setDate(hoje.getDate() - 30);
+                inicio.setDate(hoje.getDate() - 29);
                 break;
             case 'mes':
                 inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
                 break;
             case 'ano':
                 inicio.setFullYear(hoje.getFullYear() - 1);
+                inicio.setDate(inicio.getDate() + 1);
                 break;
             case 'tudo':
                 inicio = null;
@@ -2573,7 +2589,7 @@
         // Atualiza Grupos
         var grupoSelect = document.getElementById('eproc-filtro-grupo');
         var valGrupoAnterior = grupoSelect.value;
-        var gruposArr = Array.from(grupos).sort();
+        var gruposArr = Array.from(grupos).sort(function(a, b) { return a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'}); });
 
         var grupoHtml = '<option value="todos">Todos (' + gruposArr.length + ')</option>';
         gruposArr.forEach(function (g) {
@@ -2805,8 +2821,17 @@
             var deltaBaseInicio = dInicio;
             var deltaBaseFim = dFim;
 
-            var periodoAtual = (deltaBaseInicio && deltaBaseFim) ? (deltaBaseFim.getTime() - deltaBaseInicio.getTime()) : 7 * 86400000;
-            if (periodoAtual <= 0) periodoAtual = 86400000; // Mínimo 1 dia para evitar divisões por zero ou intervalos nulos
+            var periodoAtual = 7 * 86400000;
+            if (deltaBaseInicio && deltaBaseFim) {
+                var iStr = fmtDataISO(deltaBaseInicio);
+                var fStr = fmtDataISO(deltaBaseFim);
+                if (iStr && fStr) {
+                    var tI = new Date(iStr + 'T12:00:00').getTime();
+                    var tF = new Date(fStr + 'T12:00:00').getTime();
+                    var diffDias = Math.max(Math.round((tF - tI) / 86400000) + 1, 1);
+                    periodoAtual = diffDias * 86400000;
+                }
+            }
 
             var periodoAntInicio = deltaBaseInicio ? new Date(deltaBaseInicio.getTime() - periodoAtual) : null;
             var periodoAntFim = deltaBaseInicio || new Date(Date.now() - 14 * 86400000);
@@ -2841,9 +2866,9 @@
                 if (qtdAnterior > 0) {
                     var delta = Math.round((totalExec - qtdAnterior) / qtdAnterior * 100);
                     if (delta > 0) {
-                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#3fb950">▲ +' + delta + '%</strong> comparado ao período anterior';
+                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#3fb950">▲ ' + delta + '%</strong> comparado ao período anterior';
                     } else if (delta < 0) {
-                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#f85149">▼ ' + delta + '%</strong> comparado ao período anterior';
+                        document.getElementById('kpi-exec-delta').innerHTML = '<strong style="color:#f85149">▼ ' + Math.abs(delta) + '%</strong> comparado ao período anterior';
                     } else {
                         document.getElementById('kpi-exec-delta').innerHTML = '0% comparado ao período anterior';
                     }
@@ -2856,9 +2881,9 @@
                 if (procAnterior > 0) {
                     var deltaProc = Math.round((totalProc - procAnterior) / procAnterior * 100);
                     if (deltaProc > 0) {
-                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#3fb950">▲ +' + deltaProc + '%</strong> comparado ao período anterior';
+                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#3fb950">▲ ' + deltaProc + '%</strong> comparado ao período anterior';
                     } else if (deltaProc < 0) {
-                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#f85149">▼ ' + deltaProc + '%</strong> comparado ao período anterior';
+                        document.getElementById('kpi-proc-delta').innerHTML = '<strong style="color:#f85149">▼ ' + Math.abs(deltaProc) + '%</strong> comparado ao período anterior';
                     } else {
                         document.getElementById('kpi-proc-delta').innerHTML = '0% comparado ao período anterior';
                     }
