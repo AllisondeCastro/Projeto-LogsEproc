@@ -414,8 +414,8 @@
         });
     }
 
-    var cdnCarregados = { chartjs: false, sheetjs: false };
-    var cdnPromises = { chartjs: null, sheetjs: null };
+    var cdnCarregados = { chartjs: false, sheetjs: false, zoom: false };
+    var cdnPromises = { chartjs: null, sheetjs: null, zoom: null };
 
     function carregarChartJS() {
         if (cdnCarregados.chartjs) return Promise.resolve();
@@ -435,6 +435,30 @@
             adicionarLog('SheetJS carregado', 'info');
         });
         return cdnPromises.sheetjs;
+    }
+
+    function carregarZoomPlugin() {
+        if (cdnCarregados.zoom) return Promise.resolve();
+        if (cdnPromises.zoom) return cdnPromises.zoom;
+        cdnPromises.zoom = carregarCDN('https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom').then(function () {
+            cdnCarregados.zoom = true;
+            adicionarLog('Zoom Plugin carregado', 'info');
+            try {
+                if (typeof Chart !== 'undefined' && Chart.register) {
+                    var zp = window.ChartZoom;
+                    if (!zp) {
+                        var globais = Object.keys(window).filter(function (k) { return k.indexOf('zoom') !== -1 || k.indexOf('Zoom') !== -1; });
+                        for (var i = 0; i < globais.length; i++) {
+                            if (typeof window[globais[i]] === 'function' || (window[globais[i]] && window[globais[i]].id === 'zoom')) {
+                                zp = window[globais[i]]; break;
+                            }
+                        }
+                    }
+                    if (zp) Chart.register(zp);
+                }
+            } catch (e) { adicionarLog('Zoom register: ' + e.message, 'warn'); }
+        });
+        return cdnPromises.zoom;
     }
 
     // ================================================================
@@ -785,6 +809,10 @@
         '#eproc-dashboard ::-webkit-scrollbar { width:5px; }',
         '#eproc-dashboard ::-webkit-scrollbar-track { background:transparent; }',
         '#eproc-dashboard ::-webkit-scrollbar-thumb { background:#30363d; border-radius:3px; }',
+
+        /* Temporal Chart Zoom Tip */
+        '#eproc-temp-tip { position:fixed; pointer-events:none; z-index:1000002; padding:8px 14px; border-radius:8px; font-size:11px; font-weight:500; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); opacity:0; transition:opacity 0.25s ease; line-height:1.4; max-width:340px; background:rgba(13,17,23,0.4); color:#e6edf3; border:1px solid rgba(255,255,255,0.08); box-shadow:0 4px 20px rgba(0,0,0,0.3); }',
+        '#eproc-temp-tip.show { opacity:1; }',
     ].join('');
 
     // ================================================================
@@ -860,6 +888,7 @@
         '#eproc-dashboard.light-mode .rg-paral-right { color:#64748b; }',
         '#eproc-dashboard.light-mode .rg-paral-ultima { color:#94a3b8; }',
         '#eproc-dashboard.light-mode #eproc-btn-export-json, #eproc-dashboard.light-mode #eproc-btn-import-json, #eproc-dashboard.light-mode #eproc-btn-hist-proc, #eproc-dashboard.light-mode #eproc-btn-processos { box-shadow:0 1px 3px rgba(0,0,0,0.06); }',
+        '#eproc-dashboard.light-mode #eproc-temp-tip { background:rgba(255,255,255,0.4); color:#0f172a; border-color:rgba(0,0,0,0.08); box-shadow:0 4px 20px rgba(0,0,0,0.06); }',
     ].join('\n');
 
     function injectCSS() {
@@ -1121,6 +1150,12 @@
             '</div>' +
             '</div>';
         document.body.appendChild(histOverlay);
+
+        // ---- ZOOM TIP ELEMENT ----
+        var zoomTip = document.createElement('div');
+        zoomTip.id = 'eproc-temp-tip';
+        zoomTip.textContent = 'Data extensa: altere dinamicamente a escala da s\u00E9rie temporal por meio do Scroll (bolinha) do Mouse';
+        document.body.appendChild(zoomTip);
 
         // ---- BIND HELPERS ----
         function bindEl(id, event, fn) {
@@ -2685,8 +2720,7 @@
         var f = state.filters;
 
         return logs.filter(function (log) {
-            var dataLog = log[2] || log.dataOnly || log.data || '';
-            var dataStr = fmtDataBR(dataLog).split(' ')[0];
+            var dataStr = getDateKey(log);
             var partes = dataStr.split('/');
             if (partes.length === 3) {
                 var dStr = partes[2] + '-' + partes[1] + '-' + partes[0];
@@ -2780,7 +2814,7 @@
         var totalProc = new Set(dadosFiltrados.map(function (l) { return l[1] || l.processo; })).size;
         var dias = new Set();
         dadosFiltrados.forEach(function (l) {
-            var d = fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0];
+            var d = getDateKey(l);
             if (d) dias.add(d);
         });
         var numDias = dias.size || 1;
@@ -2803,7 +2837,7 @@
                 // Se no preset Tudo (datas nulas), busca as datas limites reais nos logs filtrados
                 var datasValidas = [];
                 dadosFiltrados.forEach(function (l) {
-                    var dStr = fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0];
+                    var dStr = getDateKey(l);
                     if (dStr && dStr.indexOf('/') !== -1) datasValidas.push(dStr);
                 });
                 if (datasValidas.length > 0) {
@@ -2841,7 +2875,7 @@
                 var baseInicioStr = deltaBaseInicio ? fmtDataISO(deltaBaseInicio) : null;
                 var f = state.filters;
                 var logsAnteriores = state.dadosBrutos.logs.filter(function (l) {
-                    var d = fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0];
+                    var d = getDateKey(l);
                     var partes = d.split('/');
                     if (partes.length !== 3) return false;
                     var dStr = partes[2] + '-' + partes[1] + '-' + partes[0];
@@ -2895,6 +2929,13 @@
 
         // Charts
         carregarChartJS().then(function () {
+            return carregarZoomPlugin();
+        }).then(function () {
+            renderChartTemporal(dadosFiltrados);
+            renderChartDistrib(dadosFiltrados);
+            renderChartTop(dadosFiltrados);
+        }, function () {
+            // Fallback: renderiza sem zoom
             renderChartTemporal(dadosFiltrados);
             renderChartDistrib(dadosFiltrados);
             renderChartTop(dadosFiltrados);
@@ -2915,6 +2956,14 @@
                 delete state.chartInstances[key];
             }
         });
+        var tipEl = document.getElementById('eproc-temp-tip');
+        if (tipEl) tipEl.classList.remove('show');
+        var temporalCanvas = document.getElementById('chart-temporal');
+        if (temporalCanvas) {
+            temporalCanvas.onmouseenter = null;
+            temporalCanvas.onmouseleave = null;
+            temporalCanvas.onmousemove = null;
+        }
     }
 
     function baixarChartPNG(chartId) {
@@ -2974,8 +3023,7 @@
             if (dados.length > 0) {
                 var datasValidas = [];
                 dados.forEach(function (l) {
-                    var dVal = l[2] || l.dataOnly || l.data || '';
-                    var dFmt = fmtDataBR(dVal).split(' ')[0];
+                    var dFmt = getDateKey(l);
                     if (dFmt && dFmt.indexOf('/') !== -1) {
                         datasValidas.push(dFmt);
                     }
@@ -3102,17 +3150,27 @@
         }, 300);
     }
 
+    function getDateKey(log) {
+        if (!log) return '';
+        var raw = log[2] || log.dataOnly || log.data || '';
+        if (!raw) return '';
+        return fmtDataBR(raw).split(' ')[0] || '';
+    }
+
     function renderChartTemporal(dados) {
         try {
         var canvas = document.getElementById('chart-temporal');
-        if (state.chartInstances.temporal) state.chartInstances.temporal.destroy();
-        if (!canvas || dados.length === 0) return;
+        if (!canvas || dados.length === 0) {
+            if (state.chartInstances.temporal) { state.chartInstances.temporal.destroy(); delete state.chartInstances.temporal; }
+            return;
+        }
 
         var isProc = state.metricaAtiva === 'processos';
         var agrupado = {};
+        var logsIgnoradosData = 0;
         dados.forEach(function (l) {
-            var d = fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0];
-            if (!d) return;
+            var d = getDateKey(l);
+            if (!d) { logsIgnoradosData++; return; }
             var proc = l[1] || l.processo || '';
             if (!agrupado[d]) {
                 agrupado[d] = isProc ? new Set() : 0;
@@ -3123,19 +3181,70 @@
                 agrupado[d]++;
             }
         });
-        var datas = Object.keys(agrupado).sort(function (a, b) {
+        if (logsIgnoradosData > 0) {
+            adicionarLog('Série temporal: ' + logsIgnoradosData + ' logs ignorados (data vazia/inválida)', 'warn');
+        }
+
+        var datas = Object.keys(agrupado).filter(function (d) {
+            var p = d.split('/');
+            return p.length === 3 && p[0].length === 2 && p[1].length === 2 && p[2].length === 4;
+        }).sort(function (a, b) {
             var pa = a.split('/'), pb = b.split('/');
             return pa[2] - pb[2] || pa[1] - pb[1] || pa[0] - pb[0];
         });
         var valores = datas.map(function (d) {
-            return isProc ? agrupado[d].size : agrupado[d];
+            var v = agrupado[d];
+            return isProc ? (v && v.size ? v.size : 0) : (v || 0);
         });
 
         var mainColor = isProc ? '#3fb950' : '#58a6ff';
         var bgColor = isProc ? 'rgba(63,185,80,0.08)' : 'rgba(88,166,255,0.08)';
 
-        var ctx = canvas.getContext('2d');
-        state.chartInstances.temporal = new Chart(ctx, {
+        var existing = state.chartInstances.temporal;
+
+        if (datas.length === 0) {
+            if (existing) { existing.destroy(); delete state.chartInstances.temporal; }
+            var temporalCanvas = document.getElementById('chart-temporal');
+            if (temporalCanvas) temporalCanvas.onmouseenter = temporalCanvas.onmouseleave = temporalCanvas.onmousemove = null;
+            var tipEl = document.getElementById('eproc-temp-tip');
+            if (tipEl) tipEl.classList.remove('show');
+            return;
+        }
+
+        if (existing) {
+            existing.data.labels = datas;
+            existing.data.datasets[0].data = valores;
+            existing.data.datasets[0].label = isProc ? 'Processos Impactados' : 'Execuções';
+            existing.data.datasets[0].borderColor = mainColor;
+            existing.data.datasets[0].backgroundColor = bgColor;
+            existing.data.datasets[0].pointBackgroundColor = mainColor;
+            existing.data.datasets[0].pointBorderColor = state.darkMode ? '#0d1117' : '#ffffff';
+            if (existing.options.scales) {
+                if (existing.options.scales.x) {
+                    existing.options.scales.x.ticks.color = state.darkMode ? '#ffffff' : '#64748b';
+                    existing.options.scales.x.grid.color = state.darkMode ? '#21262d' : '#f1f5f9';
+                }
+                if (existing.options.scales.y) {
+                    existing.options.scales.y.ticks.color = state.darkMode ? '#ffffff' : '#64748b';
+                    existing.options.scales.y.grid.color = state.darkMode ? '#21262d' : '#f1f5f9';
+                }
+            }
+            existing.options.plugins.tooltip.callbacks.afterBody = function (context) {
+                if (!state.filters.processo) return '';
+                var dataIdx = context[0].dataIndex;
+                var dateStr = datas[dataIdx];
+                var procsOnDate = dados.filter(function (l) {
+                    return getDateKey(l) === dateStr;
+                });
+                var tooltips = procsOnDate.map(function (l) {
+                    return 'Regra ' + (l[4] || l.regra || '?');
+                });
+                return Array.from(new Set(tooltips)).join('\n');
+            };
+            existing.update('none');
+        } else {
+            var ctx = canvas.getContext('2d');
+            state.chartInstances.temporal = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: datas,
@@ -3158,6 +3267,15 @@
                 maintainAspectRatio: true,
                 plugins: {
                     legend: { display: false },
+                    zoom: {
+                        pan: { enabled: true, mode: 'x' },
+                        zoom: {
+                            drag: { enabled: true, backgroundColor: 'rgba(88,166,255,0.08)', borderColor: '#58a6ff', borderWidth: 1 },
+                            wheel: { enabled: true },
+                            pinch: { enabled: true },
+                            mode: 'x'
+                        }
+                    },
                     tooltip: {
                         callbacks: {
                             afterBody: function (context) {
@@ -3165,7 +3283,7 @@
                                 var dataIdx = context[0].dataIndex;
                                 var dateStr = datas[dataIdx];
                                 var procsOnDate = dados.filter(function (l) {
-                                    return fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0] === dateStr;
+                                    return getDateKey(l) === dateStr;
                                 });
                                 var tooltips = procsOnDate.map(function (l) {
                                     return 'Regra ' + (l[4] || l.regra || '?');
@@ -3177,7 +3295,7 @@
                 },
                 scales: {
                     x: {
-                        ticks: { color: state.darkMode ? '#ffffff' : '#64748b', font: { size: 9 }, maxTicksLimit: 10 },
+                        ticks: { color: state.darkMode ? '#ffffff' : '#64748b', font: { size: 9 }, autoSkip: true },
                         grid: { color: state.darkMode ? '#21262d' : '#f1f5f9' }
                     },
                     y: {
@@ -3216,14 +3334,43 @@
                 }
             }]
         });
-        } catch (e) { adicionarLog('Erro renderChartTemporal: ' + e.message, 'error'); }
+
+        // Zoom tip: mostra dica se houver muitos pontos
+        var THRESHOLD = 25;
+        var tipEl = document.getElementById('eproc-temp-tip');
+        var temporalCanvas = document.getElementById('chart-temporal');
+        if (datas.length > THRESHOLD && tipEl && temporalCanvas) {
+            var tipTimeout;
+            temporalCanvas.onmouseenter = function () {
+                if (tipEl.dataset.shown) return;
+                clearTimeout(tipTimeout);
+                tipEl.classList.add('show');
+                tipEl.dataset.shown = '1';
+                tipTimeout = setTimeout(function () { tipEl.classList.remove('show'); }, 5000);
+            };
+            temporalCanvas.onmouseleave = function () {
+                clearTimeout(tipTimeout);
+                tipEl.classList.remove('show');
+            };
+            temporalCanvas.onmousemove = function (e) {
+                tipEl.style.left = (e.clientX + 12) + 'px';
+                tipEl.style.top = (e.clientY - 10) + 'px';
+            };
+        } else if (temporalCanvas) {
+            temporalCanvas.onmouseenter = temporalCanvas.onmouseleave = temporalCanvas.onmousemove = null;
+            if (tipEl) tipEl.classList.remove('show');
+        }
+        }
+    } catch (e) { adicionarLog('Erro renderChartTemporal: ' + e.message, 'error'); }
     }
 
     function renderChartDistrib(dados) {
         try {
         var canvas = document.getElementById('chart-distrib');
-        if (state.chartInstances.distrib) state.chartInstances.distrib.destroy();
-        if (!canvas || dados.length === 0) return;
+        if (!canvas || dados.length === 0) {
+            if (state.chartInstances.distrib) { state.chartInstances.distrib.destroy(); delete state.chartInstances.distrib; }
+            return;
+        }
 
         var isProc = state.metricaAtiva === 'processos';
         var dim = state.filters.pieDimensao || 'grupo';
@@ -3237,7 +3384,7 @@
             } else if (dim === 'regra') {
                 key = 'Regra ' + (l[4] || l.regra || '?');
             } else {
-                var dFmt = fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0];
+                var dFmt = getDateKey(l);
                 if (!dFmt) return;
                 key = dFmt;
             }
@@ -3269,6 +3416,18 @@
         if (isProc) {
             colors = ['#2ea043', '#3fb950', '#56d364', '#7ee787', '#238636', '#1b6329', '#0e4415', '#b4f8c8', '#a3e4d7', '#48c9b0'];
         }
+        var bgColors = labels.map(function (_, i) { return colors[i % colors.length]; });
+
+        var existing = state.chartInstances.distrib;
+        if (existing) {
+            existing.data.labels = labels;
+            existing.data.datasets[0].data = values;
+            existing.data.datasets[0].backgroundColor = bgColors;
+            existing.data.datasets[0].borderColor = state.darkMode ? '#0d1117' : '#ffffff';
+            existing.options.plugins.legend.labels.color = state.darkMode ? '#ffffff' : '#0f172a';
+            existing.update('none');
+            return;
+        }
 
         var ctx = canvas.getContext('2d');
         state.chartInstances.distrib = new Chart(ctx, {
@@ -3277,7 +3436,7 @@
                 labels: labels,
                 datasets: [{
                     data: values,
-                    backgroundColor: labels.map(function (_, i) { return colors[i % colors.length]; }),
+                    backgroundColor: bgColors,
                     borderColor: state.darkMode ? '#0d1117' : '#ffffff',
                     borderWidth: 2
                 }]
@@ -3330,8 +3489,10 @@
     function renderChartTop(dados) {
         try {
         var canvas = document.getElementById('chart-top');
-        if (state.chartInstances.top) state.chartInstances.top.destroy();
-        if (!canvas || dados.length === 0) return;
+        if (!canvas || dados.length === 0) {
+            if (state.chartInstances.top) { state.chartInstances.top.destroy(); delete state.chartInstances.top; }
+            return;
+        }
 
         var isProc = state.metricaAtiva === 'processos';
         var agrupado = {};
@@ -3386,6 +3547,28 @@
             return c[i % c.length];
         });
 
+        var existing = state.chartInstances.top;
+        if (existing) {
+            existing.data.labels = labels;
+            existing.data.datasets[0].data = values;
+            existing.data.datasets[0].label = isProc ? 'Processos' : 'Execuções';
+            existing.data.datasets[0].backgroundColor = colors;
+            existing.options.plugins.tooltip.callbacks.afterBody = function (context) {
+                if (!state.filters.processo) return '';
+                var ruleLabel = labels[context[0].dataIndex];
+                var procsOnRule = dados.filter(function (l) {
+                    return 'Regra ' + (l[4] || l.regra || '?') === ruleLabel;
+                });
+                var tooltips = procsOnRule.map(function (l) {
+                    return getDateKey(l);
+                });
+                return Array.from(new Set(tooltips)).join('\n');
+            };
+            existing.resize();
+            existing.update('none');
+            return;
+        }
+
         var ctx = canvas.getContext('2d');
         state.chartInstances.top = new Chart(ctx, {
             type: 'bar',
@@ -3414,7 +3597,7 @@
                                     return 'Regra ' + (l[4] || l.regra || '?') === ruleLabel;
                                 });
                                 var tooltips = procsOnRule.map(function (l) {
-                                    return fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0];
+                                    return getDateKey(l);
                                 });
                                 return Array.from(new Set(tooltips)).join('\n');
                             }
@@ -3738,7 +3921,7 @@
             var procNum = l[1] || l.processo || '';
             var procUrl = l[7] || l.processoUrl || '';
             data.push([
-                fmtDataBR(l[2] || l.dataOnly || l.data || '').split(' ')[0],
+                getDateKey(l),
                 procNum,
                 l[3] || l.hora || '',
                 l[4] || l.regra || '',
